@@ -1,0 +1,8 @@
+scripts/
+tests/
+*.test.ts
+.env
+.env.example
+data/
+*.md
+.git/

@@ -44,6 +44,7 @@ export function calculateTargetDate(daysInAdvance: number, fromDate = new Date()
 
 /**
  * Parse a time string (HH:mm) and create a Date object for today in EST
+ * Returns a Date representing the given time in America/New_York timezone
  */
 export function parseReleaseTime(
   timeStr: string,
@@ -51,37 +52,32 @@ export function parseReleaseTime(
 ): Date {
   const [hours, minutes] = timeStr.split(":").map(Number);
 
-  // Get current date in EST
+  // Get today's date in the target timezone using en-CA locale (gives YYYY-MM-DD format)
   const now = new Date();
-  const estFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const estDateStr = estFormatter.format(now);
-  const [month, day, year] = estDateStr.split("/").map(Number);
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: timezone });
+  const [year, month, day] = dateStr.split("-").map(Number);
 
-  // Create date object in local time but representing EST
-  const releaseDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  // Build datetime string
+  const paddedHours = String(hours).padStart(2, "0");
+  const paddedMinutes = String(minutes).padStart(2, "0");
+  const isoDatetime = `${dateStr}T${paddedHours}:${paddedMinutes}:00`;
 
-  // Adjust for timezone offset
-  const estOffset = getTimezoneOffset(timezone);
-  const localOffset = now.getTimezoneOffset();
-  const offsetDiff = localOffset - estOffset;
-  releaseDate.setMinutes(releaseDate.getMinutes() + offsetDiff);
+  // Treat as UTC first to get a reference point
+  const asUTC = new Date(isoDatetime + "Z");
 
-  return releaseDate;
-}
+  // Calculate the offset between UTC and the target timezone at this time
+  // by comparing how the same instant formats in each timezone
+  const utcStr = asUTC.toLocaleString("en-US", { timeZone: "UTC" });
+  const tzStr = asUTC.toLocaleString("en-US", { timeZone: timezone });
+  const utcParsed = new Date(utcStr);
+  const tzParsed = new Date(tzStr);
+  const offsetMs = utcParsed.getTime() - tzParsed.getTime();
 
-/**
- * Get timezone offset in minutes for a timezone
- */
-function getTimezoneOffset(timezone: string): number {
-  const now = new Date();
-  const utcDate = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
-  const tzDate = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
-  return (utcDate.getTime() - tzDate.getTime()) / 60000;
+  // asUTC currently represents "HH:mm UTC"
+  // We want "HH:mm in timezone" which equals "HH:mm + offset" in UTC
+  // Example: 10:00 EST = 10:00 + 5h = 15:00 UTC (in winter)
+  // offsetMs is positive when timezone is behind UTC (EST = +5h = +18000000ms)
+  return new Date(asUTC.getTime() + offsetMs);
 }
 
 /**
