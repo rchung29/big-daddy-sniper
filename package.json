@@ -1,0 +1,25 @@
+{
+  "name": "big-daddy-sniper",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --hot run src/index.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.0.10"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.91.1",
+    "discord.js": "^14.25.1",
+    "pino": "^10.3.0",
+    "pino-pretty": "^13.0.0",
+    "zod": "^4.3.6"
+  }
+}

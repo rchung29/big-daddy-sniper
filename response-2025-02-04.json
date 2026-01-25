@@ -1,0 +1,605 @@
+{
+  "query": {
+    "day": "2025-02-04",
+    "party_size": 2,
+    "time_filter": null
+  },
+  "results": {
+    "venues": [
+      {
+        "venue": {
+          "id": {
+            "resy": 76033
+          },
+          "venue_group": {
+            "id": 216169,
+            "name": "COTE Group - Gracious Hospitality Management",
+            "venues": [
+              72270,
+              72271,
+              72306,
+              73330,
+              81165,
+              87842,
+              93118
+            ]
+          },
+          "name": "COQODAQ",
+          "type": "Korean American",
+          "url_slug": "coqodaq",
+          "rating": 4.65024,
+          "total_ratings": 9801,
+          "location": {
+            "code": "ny",
+            "name": "New York",
+            "url_slug": "new-york-ny",
+            "geo": {
+              "lat": 40.7402103223236,
+              "lon": -73.9887896184818
+            },
+            "neighborhood": "Flatiron District",
+            "time_zone": "EST5EDT"
+          },
+          "feature_recaptcha": true,
+          "gda_concierge_booking": false,
+          "hide_allergy_question": false,
+          "hide_occasion_question": false,
+          "hide_special_request_question": false,
+          "hospitality_included": 0,
+          "is_gdc": 1,
+          "is_global_dining_access": true,
+          "is_global_dining_access_only": false,
+          "is_gns": 0,
+          "is_rga": true,
+          "is_rga_only": false,
+          "requires_reservation_transfers": 0,
+          "resy_select": 0,
+          "tax_included": false,
+          "transaction_processor": "stripe",
+          "currency_symbol": "$",
+          "price_range": 2,
+          "average_bill_size": 1,
+          "top": true,
+          "favorite": false,
+          "supports_pickups": 0,
+          "inventory": {
+            "type": {
+              "id": 2
+            }
+          },
+          "reopen": {
+            "date": null
+          },
+          "travel_time": {
+            "distance": 5390.702140786363
+          },
+          "source": {
+            "name": null,
+            "logo": null,
+            "terms_of_service": null,
+            "privacy_policy": null
+          },
+          "service_types": {},
+          "notify_options": [],
+          "ticket": {
+            "average": 1,
+            "average_str": "$1"
+          },
+          "currency": {
+            "code": "USD",
+            "symbol": "$"
+          },
+          "default_template": "3907826",
+          "content": [
+            {
+              "title": null,
+              "body": "The Korean steakhouse masters behind COTE have taken their talents to fried chicken, crafting both American and Korean chicken preparations in a cathedral-like space. Pro tip: We’d go for the Bucket List feast, if we were you.  ",
+              "icon": {
+                "url": "https://s3.amazonaws.com/resy.com/images/icons/heart.svg"
+              },
+              "display": {
+                "type": "text"
+              },
+              "locale": {
+                "language": "en-us"
+              },
+              "name": "why_we_like_it",
+              "attribution": null
+            }
+          ],
+          "responsive_images": {
+            "originals": {
+              "d40646d7c4e161bc4f31edac41b6e09468517575": {
+                "url": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg"
+              },
+              "bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c": {
+                "url": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg"
+              },
+              "0d97ebdef39171aa3206289d64f9e6230acf8596": {
+                "url": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg"
+              },
+              "e300e086a176fe484a4cac06b0f9597f7458cf25": {
+                "url": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg"
+              },
+              "2cbccca7f92cae1dc8df448d6a193e5c1781f839": {
+                "url": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg"
+              },
+              "5623192adefae1cbd6638c872ced7f67c9bae976": {
+                "url": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg"
+              },
+              "3096423845bc774402af6c6aa435a1ce882c2c42": {
+                "url": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg"
+              }
+            },
+            "urls": {
+              "d40646d7c4e161bc4f31edac41b6e09468517575": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/1:1/200"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/4:3/400"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/16:9/400"
+                }
+              },
+              "bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/200",
+                  "400": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/400",
+                  "800": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/800"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/4:3/400",
+                  "800": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/4:3/800"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/16:9/400",
+                  "800": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/16:9/800"
+                }
+              },
+              "0d97ebdef39171aa3206289d64f9e6230acf8596": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/1:1/200"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/4:3/400"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/16:9/400"
+                }
+              },
+              "e300e086a176fe484a4cac06b0f9597f7458cf25": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/1:1/200"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/4:3/400"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/16:9/400"
+                }
+              },
+              "2cbccca7f92cae1dc8df448d6a193e5c1781f839": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/200",
+                  "400": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/400",
+                  "800": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/800"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/400",
+                  "800": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/800",
+                  "1600": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/1600"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/400",
+                  "800": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/800",
+                  "1600": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/1600"
+                }
+              },
+              "5623192adefae1cbd6638c872ced7f67c9bae976": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/200",
+                  "400": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/400",
+                  "800": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/800"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/4:3/400",
+                  "800": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/4:3/800"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/16:9/400",
+                  "800": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/16:9/800"
+                }
+              },
+              "3096423845bc774402af6c6aa435a1ce882c2c42": {
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/200",
+                  "400": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/400",
+                  "800": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/800"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/400",
+                  "800": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/800",
+                  "1600": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/1600"
+                },
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/400",
+                  "800": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/800",
+                  "1600": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/1600"
+                }
+              }
+            },
+            "urls_by_resolution": {
+              "d40646d7c4e161bc4f31edac41b6e09468517575": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/1:1/200"
+                },
+                "400": {
+                  "4:3": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/16:9/400"
+                }
+              },
+              "bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/200"
+                },
+                "400": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/400",
+                  "4:3": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/16:9/400"
+                },
+                "800": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/1:1/800",
+                  "4:3": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/4:3/800",
+                  "16:9": "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/16:9/800"
+                }
+              },
+              "0d97ebdef39171aa3206289d64f9e6230acf8596": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/1:1/200"
+                },
+                "400": {
+                  "4:3": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/16:9/400"
+                }
+              },
+              "e300e086a176fe484a4cac06b0f9597f7458cf25": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/1:1/200"
+                },
+                "400": {
+                  "4:3": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/16:9/400"
+                }
+              },
+              "2cbccca7f92cae1dc8df448d6a193e5c1781f839": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/200"
+                },
+                "400": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/400",
+                  "4:3": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/400"
+                },
+                "800": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/1:1/800",
+                  "4:3": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/800",
+                  "16:9": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/800"
+                },
+                "1600": {
+                  "4:3": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/4:3/1600",
+                  "16:9": "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/16:9/1600"
+                }
+              },
+              "5623192adefae1cbd6638c872ced7f67c9bae976": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/200"
+                },
+                "400": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/400",
+                  "4:3": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/16:9/400"
+                },
+                "800": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/1:1/800",
+                  "4:3": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/4:3/800",
+                  "16:9": "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/16:9/800"
+                }
+              },
+              "3096423845bc774402af6c6aa435a1ce882c2c42": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/200"
+                },
+                "400": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/400",
+                  "4:3": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/400",
+                  "16:9": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/400"
+                },
+                "800": {
+                  "1:1": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/1:1/800",
+                  "4:3": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/800",
+                  "16:9": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/800"
+                },
+                "1600": {
+                  "4:3": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/4:3/1600",
+                  "16:9": "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/16:9/1600"
+                }
+              }
+            },
+            "file_names": [
+              "d40646d7c4e161bc4f31edac41b6e09468517575",
+              "bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c",
+              "0d97ebdef39171aa3206289d64f9e6230acf8596",
+              "e300e086a176fe484a4cac06b0f9597f7458cf25",
+              "2cbccca7f92cae1dc8df448d6a193e5c1781f839",
+              "5623192adefae1cbd6638c872ced7f67c9bae976",
+              "3096423845bc774402af6c6aa435a1ce882c2c42"
+            ],
+            "aspect_ratios": {
+              "1:1": {
+                "200": "200x200",
+                "400": "400x400",
+                "800": "800x800",
+                "1600": "1600x1600"
+              },
+              "4:3": {
+                "400": "400x300",
+                "800": "800x600",
+                "1600": "1600x1200"
+              },
+              "16:9": {
+                "400": "400x225",
+                "800": "800x450",
+                "1600": "1600x900"
+              }
+            }
+          },
+          "collections": [
+            {
+              "id": 4,
+              "name": "Resy Staff Picks in New York",
+              "collection_slug": "resy-staff-picks-in-new-york",
+              "type_id": 1,
+              "file_name": "staff-picks",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/staff-picks.svg",
+              "short_name": "Staff Picks",
+              "description": "If there’s one thing you must know about the people who work at Resy, it’s that we genuinely love restaurants. Here are our New York picks."
+            },
+            {
+              "id": 1076,
+              "name": "Great New York Tasting Menus Under $125",
+              "collection_slug": "great-new-york-tasting-menus-under-125",
+              "type_id": 1,
+              "file_name": "restaurateur-picks",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/restaurateur-picks.svg",
+              "short_name": "Tasting Menus Under $125",
+              "description": "Want to enjoy a chef guiding you through their culinary world, without breaking the bank? We’ve got you covered."
+            },
+            {
+              "id": 1194,
+              "name": "New York’s 2025 Michelin Winners",
+              "collection_slug": "new-yorks-2024-michelin-winners",
+              "type_id": 1,
+              "file_name": "restaurateurpicks",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/restaurateurpicks.svg",
+              "short_name": "Michelin Winners",
+              "description": "From Michelin stars to Bib Gourmand, say hello to the 2025 class of Michelin honorees in New York."
+            },
+            {
+              "id": 888,
+              "name": "Book Tonight",
+              "collection_slug": "book-tonight",
+              "type_id": 2,
+              "file_name": "book-tonight",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/book-tonight.svg",
+              "short_name": "Book Tonight",
+              "description": "Book these venues tonight."
+            },
+            {
+              "id": 889,
+              "name": "Climbing",
+              "collection_slug": "climbing",
+              "type_id": 3,
+              "file_name": "climbing",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/climbing.svg",
+              "short_name": "Climbing",
+              "description": "You dine, the restaurant climbs. Climbing on Resy is the only data-driven list powered by your reservations. Consider it a curated guide by locals, for locals."
+            },
+            {
+              "id": 14,
+              "name": "Global Dining Access",
+              "collection_slug": "global-dining-access",
+              "type_id": 10,
+              "file_name": "rga",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/rga.svg",
+              "short_name": "Global Dining Access",
+              "description": "Global Dining Access by Resy gives eligible American Express® Card Members access to sought-after chefs and restaurants across the globe. To learn more, visit resy.com/globaldiningaccess."
+            },
+            {
+              "id": 1211,
+              "name": "Platinum Nights by Resy",
+              "collection_slug": "amex-platinum-nights",
+              "type_id": 13,
+              "file_name": "platinum_nights",
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/platinum_nights.svg",
+              "short_name": "PlatinumNightsNYC",
+              "description": "Special access to reservations on select nights for eligible Amex Platinum Card® Members"
+            }
+          ],
+          "allow_bypass_payment_method": 1,
+          "waitlist": {
+            "available": 0,
+            "label": "Join Wait List",
+            "current": null
+          },
+          "events": []
+        },
+        "slots": [],
+        "templates": {
+          "3907826": {
+            "id": 3907826,
+            "name": "UPDATED_DEFAULT_TEMPLATE",
+            "images": [
+              "https://image.resy.com/3/003/2/76033/d40646d7c4e161bc4f31edac41b6e09468517575/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/0d97ebdef39171aa3206289d64f9e6230acf8596/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/e300e086a176fe484a4cac06b0f9597f7458cf25/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/2cbccca7f92cae1dc8df448d6a193e5c1781f839/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/5623192adefae1cbd6638c872ced7f67c9bae976/jpg/640x360",
+              "https://image.resy.com/3/003/2/76033/3096423845bc774402af6c6aa435a1ce882c2c42/jpg/640x360"
+            ],
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "COQODAQ, an innovative fried chicken concept from Gracious Hospitality Management, was brought to life in January 2024. Designed by Rockwell Group, as ‘the cathedral of fried chicken’ COQODAQ’s mission is to bring Better Fried Chicken to all. \n\nThe one-of-a-kind dining experience skillfully integrates Korean and American influences, featuring dishes cooked by a world-class culinary team. From certified humane, hormone and antibiotic-free chicken to gluten-free and anti-inflammatory rice flour batter, and clean cultured oil - all ingredients are of the highest quality and sustainably sourced. The menu is centered around the Korean philosophy of Eum-Yang (음양|陰), which embraces duality as fundamental to the nature and balance of the universe with chilled, fresh vegetables juxtaposed with the hot, crisp fried chicken, creating a glorious harmony of flavors while aiding in better digestion. With a beverage program that champions Champagne as the pairing of choice, COQODAQ features the largest restaurant Champagne list in America, with Blue Chip classics, pages of verticals of vintages, but also 100 sparkling wines under $100, most of which is Champagne, breaking down the cost barrier of bubbly. Classic cocktails with an innovative twist as well as premiere beer and wine selections round out the menu. With a never ending and ever-evolving pursuit to deliver Better Fried Chicken at the core, COQODAQ aims to spark joy and bring happiness and deliciousness to all that walk through its doors. ",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Guess what?! Your favorite spot just leveled up — COQODAQ is a proud participant of New York City's 2026 Restaurant Week! This exclusive offering is available Monday-Friday for Lunch only, during the weeks of January 20th to February 12th.\n\nReservations open 14 days in advance at 10AM EST. All dining tables at COQODAQ are sized for parties of 4 and up. We are happy to accept reservations of 2-3 in our first or last seating only. COQODAQ does offer walk-ins at our bar, high top, and outdoor patio to enjoy the full menu. Please note, all reservations are booked for a 100-minute dining experience. If you'd like to continue your evening with us post-dinner, let us know and we'll look to continue the fun at our bar & high top lounge!  \n\nWe offer a 15 minute grace period for late arrivals and only seat complete parties. If your party arrives or is incomplete more than 15 minutes past the reservation time, we will try our best to accommodate you but may need to expedite your dining experience or reschedule it in order to honor the next reservation on the table.\n\nPlease email reservations@coqodaq.com for assistance on standard reservations up to 6 diners. For group dining (parties above 6) and special events, head over to the Groups & Events tab on Coqodaq.com.\n\nCOQODAQ strictly prohibits unauthorized reservation transfers, booking reservations using “bots,” and the sale of any reservations from unauthorized third parties.  If discovered, we will cancel the reservation(s) and report all profiles found to be engaging in unauthorized transfers, bot bookings, or reservation sales to Resy directly. \n\nMust be 21 years of age or older to consume alcoholic beverages. Please drink responsibly.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The Korean steakhouse masters behind COTE have taken their talents to fried chicken, crafting both American and Korean chicken preparations in a cathedral-like space. Pro tip: We’d go for the Bucket List feast, if we were you.  ",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "min": 1,
+                  "max": 1
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "min": 2,
+                  "max": 2
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "min": 3,
+                  "max": 3
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "min": 4,
+                  "max": 4
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "min": 5,
+                  "max": null
+                }
+              }
+            ],
+            "is_paid": false,
+            "is_default": 1,
+            "is_event": 0,
+            "is_pickup": 0,
+            "venue_id": 76033,
+            "reservation_config": {
+              "type": "",
+              "badge": null,
+              "secs_off_market": null,
+              "time_off_market": null
+            },
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "venue_share": null,
+            "restriction_id": null,
+            "payment_structure": null,
+            "cancellation_fee": null,
+            "secs_cancel_cut_off": null,
+            "time_cancel_cut_off": null,
+            "secs_change_cut_off": null,
+            "time_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "deposit_fee": null,
+            "service_charge": null,
+            "service_charge_options": [],
+            "raw_image_names": [
+              "d40646d7c4e161bc4f31edac41b6e09468517575",
+              "bc3ea19cbeac40a2f08cdc770fac8a5ec7c2bd8c",
+              "0d97ebdef39171aa3206289d64f9e6230acf8596",
+              "e300e086a176fe484a4cac06b0f9597f7458cf25",
+              "2cbccca7f92cae1dc8df448d6a193e5c1781f839",
+              "5623192adefae1cbd6638c872ced7f67c9bae976",
+              "3096423845bc774402af6c6aa435a1ce882c2c42"
+            ],
+            "image_dimensions": [
+              [
+                540,
+                360
+              ],
+              [
+                999,
+                999
+              ],
+              [
+                540,
+                360
+              ],
+              [
+                540,
+                360
+              ],
+              [
+                1631,
+                1403
+              ],
+              [
+                999,
+                999
+              ],
+              [
+                1631,
+                1403
+              ]
+            ],
+            "pickup_highlight": 0,
+            "menu": {},
+            "item_ids": [],
+            "menu_ids": []
+          }
+        },
+        "gating_errors": {},
+        "notifies": [],
+        "pickups": {
+          "slots": [],
+          "service_types": {}
+        }
+      }
+    ],
+    "meta": {
+      "offset": 1,
+      "limit": null
+    }
+  },
+  "bookmark": null,
+  "platinum_night": null
+}
