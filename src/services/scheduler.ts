@@ -7,6 +7,7 @@
  */
 import { store } from "../store";
 import type { Restaurant, FullSubscription } from "../db/schema";
+import { DateTime } from "luxon";
 import pino from "pino";
 
 const logger = pino({
@@ -43,8 +44,7 @@ export function calculateTargetDate(daysInAdvance: number, fromDate = new Date()
 }
 
 /**
- * Parse a time string (HH:mm) and create a Date object for today in EST
- * Returns a Date representing the given time in America/New_York timezone
+ * Parse a time string (HH:mm) and create a Date object for today in the given timezone
  */
 export function parseReleaseTime(
   timeStr: string,
@@ -52,32 +52,12 @@ export function parseReleaseTime(
 ): Date {
   const [hours, minutes] = timeStr.split(":").map(Number);
 
-  // Get today's date in the target timezone using en-CA locale (gives YYYY-MM-DD format)
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-CA", { timeZone: timezone });
-  const [year, month, day] = dateStr.split("-").map(Number);
+  // Get today's date in the target timezone, set the time, and convert to JS Date
+  const dt = DateTime.now()
+    .setZone(timezone)
+    .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
 
-  // Build datetime string
-  const paddedHours = String(hours).padStart(2, "0");
-  const paddedMinutes = String(minutes).padStart(2, "0");
-  const isoDatetime = `${dateStr}T${paddedHours}:${paddedMinutes}:00`;
-
-  // Treat as UTC first to get a reference point
-  const asUTC = new Date(isoDatetime + "Z");
-
-  // Calculate the offset between UTC and the target timezone at this time
-  // by comparing how the same instant formats in each timezone
-  const utcStr = asUTC.toLocaleString("en-US", { timeZone: "UTC" });
-  const tzStr = asUTC.toLocaleString("en-US", { timeZone: timezone });
-  const utcParsed = new Date(utcStr);
-  const tzParsed = new Date(tzStr);
-  const offsetMs = utcParsed.getTime() - tzParsed.getTime();
-
-  // asUTC currently represents "HH:mm UTC"
-  // We want "HH:mm in timezone" which equals "HH:mm + offset" in UTC
-  // Example: 10:00 EST = 10:00 + 5h = 15:00 UTC (in winter)
-  // offsetMs is positive when timezone is behind UTC (EST = +5h = +18000000ms)
-  return new Date(asUTC.getTime() + offsetMs);
+  return dt.toJSDate();
 }
 
 /**
@@ -88,15 +68,18 @@ export function getNextReleaseDateTime(
   releaseTime: string,
   timezone = "America/New_York"
 ): Date {
-  const release = parseReleaseTime(releaseTime, timezone);
-  const now = new Date();
+  const [hours, minutes] = releaseTime.split(":").map(Number);
+
+  let dt = DateTime.now()
+    .setZone(timezone)
+    .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
 
   // If release time has passed today, schedule for tomorrow
-  if (release.getTime() <= now.getTime()) {
-    release.setDate(release.getDate() + 1);
+  if (dt <= DateTime.now()) {
+    dt = dt.plus({ days: 1 });
   }
 
-  return release;
+  return dt.toJSDate();
 }
 
 /**
