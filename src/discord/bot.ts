@@ -107,11 +107,16 @@ export class DiscordBot {
           "Error handling command"
         );
 
-        const errorMessage = "An error occurred while processing your command.";
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({ content: errorMessage, ephemeral: true });
-        } else {
-          await interaction.reply({ content: errorMessage, ephemeral: true });
+        // Try to respond, but don't throw if interaction is already dead
+        try {
+          const errorMessage = "An error occurred while processing your command.";
+          if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content: errorMessage, ephemeral: true });
+          } else {
+            await interaction.reply({ content: errorMessage, ephemeral: true });
+          }
+        } catch {
+          // Interaction already expired or acknowledged, ignore
         }
       }
     });

@@ -392,15 +392,7 @@ export class Executor {
         const startMinutes = this.parseTimeWindow(sub.time_window_start);
         const endMinutes = this.parseTimeWindow(sub.time_window_end);
 
-        // Handle overnight windows
-        let inWindow: boolean;
-        if (endMinutes < startMinutes) {
-          inWindow = slotMinutes >= startMinutes || slotMinutes <= endMinutes;
-        } else {
-          inWindow = slotMinutes >= startMinutes && slotMinutes <= endMinutes;
-        }
-
-        if (inWindow) {
+        if (slotMinutes >= startMinutes && slotMinutes <= endMinutes) {
           userSlots.push({
             slot,
             subscription: sub,
