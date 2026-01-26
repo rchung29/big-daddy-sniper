@@ -1,9 +1,9 @@
 /**
  * Executor Service
- * Handles parallel booking execution with optional per-user proxy isolation
+ * Handles parallel booking execution with per-user proxy preferences
  *
  * Strategy:
- * - Each user gets ONE dedicated proxy (if USE_PROXIES=true)
+ * - Each user uses their preferred_proxy_id (null = localhost, id = specific proxy)
  * - Users run in PARALLEL (Promise.all)
  * - Slots within a user are tried SEQUENTIALLY (earliest first)
  *
@@ -12,7 +12,6 @@
 import { ResyClient, ResyAPIError } from "../sdk";
 import { getProxyManager } from "./proxy-manager";
 import { store } from "../store";
-import { config } from "../config";
 import type { FullSubscription } from "../db/schema";
 import type { ScanResult, DiscoveredSlot } from "./scanner";
 import { parseSlotTime } from "../filters";
@@ -98,15 +97,23 @@ export class Executor {
 
     // Group subscriptions by user
     const userSubscriptions = this.groupSubscriptionsByUser(window.subscriptions);
-    const userIds = Array.from(userSubscriptions.keys());
 
-    // Conditionally assign proxies based on config
-    const useProxies = config.USE_PROXIES;
-    const proxyAssignments = useProxies
-      ? this.proxyManager.assignProxiesToUsers(userIds)
-      : new Map<number, Proxy>();
+    // Build proxy assignments from user preferences
+    // preferred_proxy_id: null = localhost, number = use that proxy
+    const proxyAssignments = new Map<number, Proxy | null>();
+    for (const [userId, subs] of userSubscriptions) {
+      const preferredProxyId = subs[0].preferred_proxy_id;
+      if (preferredProxyId) {
+        const proxy = store.getProxyById(preferredProxyId);
+        proxyAssignments.set(userId, proxy ?? null);
+        logger.debug({ userId, proxyId: preferredProxyId }, "Using preferred proxy");
+      } else {
+        proxyAssignments.set(userId, null); // localhost
+        logger.debug({ userId }, "Using localhost (no proxy)");
+      }
+    }
 
-    logger.info({ useProxies, userCount: userIds.length }, "Proxy mode");
+    logger.info({ userCount: userSubscriptions.size }, "Proxy assignments configured");
 
     // Execute bookings for all users in parallel
     const results = await Promise.all(
@@ -114,13 +121,6 @@ export class Executor {
         this.bookForUser(userId, subs, slots, proxyAssignments.get(userId) ?? null)
       )
     );
-
-    // Release all user proxies (if proxies were used)
-    if (useProxies) {
-      for (const userId of userIds) {
-        this.proxyManager.releaseUserProxy(userId);
-      }
-    }
 
     // Log summary
     const successes = results.filter((r) => r.success);

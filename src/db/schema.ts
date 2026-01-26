@@ -29,6 +29,7 @@ export interface User {
   discord_username: string | null;
   resy_auth_token: string | null;
   resy_payment_method_id: number | null;
+  preferred_proxy_id: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -110,4 +111,19 @@ export interface FullSubscription extends SubscriptionWithDetails {
   discord_id: string;
   resy_auth_token: string;
   resy_payment_method_id: number;
+  preferred_proxy_id: number | null;
+}
+
+/**
+ * Slot snapshot for debugging drops
+ */
+export interface SlotSnapshot {
+  id: number;
+  restaurant_id: number | null;
+  restaurant_name: string;
+  target_date: string;
+  party_size: number;
+  slot_count: number;
+  slots: Array<{ time: string; type: string | null }>;
+  created_at: Date;
 }

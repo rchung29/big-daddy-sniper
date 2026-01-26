@@ -462,6 +462,7 @@ class Store {
         discord_id: user.discord_id,
         resy_auth_token: user.resy_auth_token,
         resy_payment_method_id: user.resy_payment_method_id,
+        preferred_proxy_id: user.preferred_proxy_id,
       });
     }
 
@@ -578,6 +579,10 @@ class Store {
     return Array.from(this.proxies.values());
   }
 
+  getProxyById(id: number): Proxy | undefined {
+    return this.proxies.get(id);
+  }
+
   getAvailableProxies(): Proxy[] {
     const now = new Date();
     return this.getAllProxies()
@@ -684,6 +689,32 @@ class Store {
     // TODO: Track recent successful bookings in memory if needed
     // For now, let the booking attempt happen and Resy will reject duplicates
     return false;
+  }
+
+  // ============ Slot Snapshot Operations (write-only, fire-and-forget) ============
+
+  /**
+   * Save a snapshot of available slots (for debugging drops)
+   */
+  saveSlotSnapshot(data: {
+    restaurant_id: number;
+    restaurant_name: string;
+    target_date: string;
+    party_size: number;
+    slot_count: number;
+    slots: Array<{ time: string; type: string | null }>;
+  }): void {
+    executeWriteThrough("saveSlotSnapshot", async () => {
+      const supabase = getSupabase();
+      await supabase.from("slot_snapshots").insert({
+        restaurant_id: data.restaurant_id,
+        restaurant_name: data.restaurant_name,
+        target_date: data.target_date,
+        party_size: data.party_size,
+        slot_count: data.slot_count,
+        slots: data.slots,
+      });
+    });
   }
 
   // ============ Store Status ============

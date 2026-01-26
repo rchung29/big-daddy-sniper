@@ -6,6 +6,7 @@
 import { ResyClient, ResyAPIError } from "../sdk";
 import { getProxyManager } from "./proxy-manager";
 import { config } from "../config";
+import { store } from "../store";
 import type { ReleaseWindow } from "./scheduler";
 import type { Restaurant } from "../db/schema";
 import { filterSlots, type SlotInfo } from "../filters";
@@ -252,6 +253,33 @@ export class Scanner {
         const rawSlots = venue.slots ?? [];
 
         if (rawSlots.length === 0) continue;
+
+        // Log raw slots for debugging drops
+        const slotData = rawSlots.map((s) => ({
+          time: s.date?.start ?? "",
+          type: s.config?.type ?? null,
+        }));
+
+        logger.info(
+          {
+            restaurant: restaurant.name,
+            partySize,
+            targetDate,
+            slotCount: rawSlots.length,
+            slots: slotData,
+          },
+          "Raw slots from API"
+        );
+
+        // Save to DB async (fire-and-forget, off hot path)
+        store.saveSlotSnapshot({
+          restaurant_id: restaurant.id,
+          restaurant_name: restaurant.name,
+          target_date: targetDate,
+          party_size: partySize,
+          slot_count: rawSlots.length,
+          slots: slotData,
+        });
 
         // Convert to SlotInfo format
         const slotInfos: SlotInfo[] = rawSlots.map((slot) => ({

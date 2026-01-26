@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars and fill in your values
+
+aws_region = "us-east-1"
+
+# Get these from your existing EC2 instance:
+#   aws ec2 describe-instances --instance-ids <your-bot-instance-id>
+vpc_id    = "vpc-xxxxxxxxx"
+subnet_id = "subnet-xxxxxxxxx"
+
+# Number of proxy instances
+proxy_count = 3
+
+# Instance type (t3.nano is ~$3/month)
+instance_type = "t3.nano"
+
+# Your SSH key for debugging (optional)
+key_name = "your-key-name"
+
+# Security group of your bot instance (so proxies accept traffic from it)
+allowed_security_groups = ["sg-xxxxxxxxx"]
+
+# Or use CIDR (your bot's private IP or VPC CIDR)
+allowed_cidrs = ["10.0.0.0/8"]
+
+# Your IP for SSH debugging (optional)
+ssh_cidrs = ["1.2.3.4/32"]
