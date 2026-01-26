@@ -6,3 +6,4 @@ export * from "./proxy-manager";
 export * from "./scheduler";
 export * from "./scanner";
 export * from "./executor";
+export * from "./booking-coordinator";

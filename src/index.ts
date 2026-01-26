@@ -2,6 +2,12 @@
  * Big Daddy Sniper - Entry Point
  *
  * Multi-user reservation sniper with Discord bot interface and Supabase backend.
+ *
+ * Architecture (Push-based):
+ * - Scheduler triggers scan windows 45s before release
+ * - Scanner polls restaurants in parallel, emits slots immediately when found
+ * - BookingCoordinator receives slots, deduplicates, fires booking attempts
+ * - Scanner continues scanning non-completed restaurants for full 2-minute window
  */
 import { config, validateConfig } from "./config";
 import { initializeSupabase, closeSupabase } from "./db/supabase";
@@ -9,8 +15,8 @@ import { store } from "./store";
 import { getDiscordBot } from "./discord/bot";
 import { initializeNotifier, getNotifier } from "./discord/notifications";
 import { getScheduler, type ReleaseWindow } from "./services/scheduler";
-import { getScanner, type ScanResult } from "./services/scanner";
-import { getExecutor } from "./services/executor";
+import { getScanner, type ScanStats } from "./services/scanner";
+import { getBookingCoordinator } from "./services/booking-coordinator";
 import { checkResyIPOrExit } from "./services/ip-check";
 import pino from "pino";
 
@@ -60,8 +66,8 @@ async function main(): Promise<void> {
   // Initialize notifier with Discord client
   initializeNotifier(discordBot.getClient(), config.DISCORD_ADMIN_ID);
 
-  // Initialize executor with callbacks
-  const executor = getExecutor({
+  // Initialize booking coordinator (push-based architecture)
+  const coordinator = getBookingCoordinator({
     apiKey: config.RESY_API_KEY,
     dryRun: config.DRY_RUN,
     onBookingSuccess: async (result) => {
@@ -78,28 +84,60 @@ async function main(): Promise<void> {
     },
   });
 
-  // Initialize scanner
+  // Initialize scanner with push-based callbacks
   const scanner = getScanner({
     scanIntervalMs: config.SCAN_INTERVAL_MS,
     scanTimeoutSeconds: config.SCAN_TIMEOUT_SECONDS,
     apiKey: config.RESY_API_KEY,
-    onSlotsFound: async (result: ScanResult) => {
+
+    // Push model: slots are emitted immediately to coordinator
+    onSlotsDiscovered: (slots, restaurant) => {
       logger.info(
         {
-          releaseTime: result.window.releaseTime,
-          targetDate: result.window.targetDate,
-          slotsFound: result.slots.length,
+          restaurant: restaurant.name,
+          slotsFound: slots.length,
         },
-        "Slots found - executing bookings"
+        "Slots discovered - forwarding to coordinator"
+      );
+      coordinator.onSlotsDiscovered(slots, restaurant);
+    },
+
+    // Called when scan window completes
+    onScanComplete: async (window: ReleaseWindow, stats: ScanStats) => {
+      logger.info(
+        {
+          releaseTime: window.releaseTime,
+          targetDate: window.targetDate,
+          totalIterations: stats.totalIterations,
+          totalSlotsFound: stats.totalSlotsFound,
+          restaurantsWithSlots: stats.restaurantsWithSlots,
+          restaurantsWithoutSlots: stats.restaurantsWithoutSlots,
+          elapsedMs: stats.elapsedMs,
+          coordinatorStats: coordinator.getStats(),
+        },
+        "Scan window complete"
       );
 
-      // Execute bookings for all subscribed users
-      const bookingResults = await executor.execute(result);
-
-      // Notify admin of cycle summary
+      // Notify admin of scan summary
       const notifier = getNotifier();
-      if (notifier) {
-        await notifier.notifyBookingCycleSummary(bookingResults);
+      if (notifier && config.DISCORD_ADMIN_ID) {
+        const summary = [
+          `**Scan Complete** - ${window.releaseTime}`,
+          `Target date: ${window.targetDate}`,
+          `Duration: ${(stats.elapsedMs / 1000).toFixed(1)}s`,
+          `Iterations: ${stats.totalIterations}`,
+          `Slots found: ${stats.totalSlotsFound}`,
+          `Restaurants with slots: ${stats.restaurantsWithSlots}/${window.restaurants.length}`,
+          `Bookings attempted: ${coordinator.getStats().inFlightCount + coordinator.getStats().successfulBookings}`,
+          `Successful bookings: ${coordinator.getStats().successfulBookings}`,
+        ].join("\n");
+
+        try {
+          const adminUser = await discordBot.getClient().users.fetch(config.DISCORD_ADMIN_ID);
+          await adminUser.send(summary);
+        } catch (error) {
+          logger.error({ error: String(error) }, "Failed to send admin summary");
+        }
       }
     },
   });
@@ -116,6 +154,9 @@ async function main(): Promise<void> {
         },
         "Window starting - beginning scan"
       );
+
+      // Reset coordinator state for new window
+      coordinator.reset();
 
       // Notify users that scanning started
       const notifier = getNotifier();
@@ -139,8 +180,8 @@ async function main(): Promise<void> {
         }
       }
 
-      // Start scanning
-      await scanner.startScan(window);
+      // Start scanning - runs in background, emits slots via callback
+      scanner.startScan(window);
     },
   });
 
@@ -152,6 +193,7 @@ async function main(): Promise<void> {
       scanInterval: config.SCAN_INTERVAL_MS,
       scanTimeout: config.SCAN_TIMEOUT_SECONDS,
       scanStartBefore: config.SCAN_START_SECONDS_BEFORE,
+      architecture: "push-based",
     },
     "Big Daddy Sniper started successfully"
   );

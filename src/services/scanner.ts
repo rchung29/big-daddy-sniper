@@ -1,6 +1,12 @@
 /**
  * Scanner Service
- * Polls restaurants every 1 second to detect slot availability
+ *
+ * Push-based architecture:
+ * - Scans ALL restaurants in parallel each iteration
+ * - Tracks per-restaurant completion (completedRestaurants Set)
+ * - When slots found: emit to callback immediately, mark restaurant done
+ * - Keeps scanning non-completed restaurants for full 2-minute window
+ *
  * Optionally uses rotating proxies if USE_PROXIES=true
  */
 import { ResyClient, ResyAPIError } from "../sdk";
@@ -34,7 +40,7 @@ export interface DiscoveredSlot {
 }
 
 /**
- * Scan result containing all discovered slots
+ * Scan result containing all discovered slots (legacy, for backwards compatibility)
  */
 export interface ScanResult {
   window: ReleaseWindow;
@@ -49,7 +55,23 @@ export interface ScannerConfig {
   scanIntervalMs?: number;
   scanTimeoutSeconds?: number;
   apiKey?: string;
+  /** @deprecated Use onSlotsDiscovered instead for push-based architecture */
   onSlotsFound?: (result: ScanResult) => void;
+  /** Called immediately when slots are found for a restaurant - non-blocking */
+  onSlotsDiscovered?: (slots: DiscoveredSlot[], restaurant: Restaurant) => void;
+  /** Called when scan window completes (2min timeout or all restaurants found slots) */
+  onScanComplete?: (window: ReleaseWindow, stats: ScanStats) => void;
+}
+
+/**
+ * Statistics for a completed scan
+ */
+export interface ScanStats {
+  totalIterations: number;
+  totalSlotsFound: number;
+  restaurantsWithSlots: number;
+  restaurantsWithoutSlots: number;
+  elapsedMs: number;
 }
 
 /**
@@ -60,19 +82,27 @@ export class Scanner {
   private scanTimeoutSeconds: number;
   private apiKey: string;
   private onSlotsFound?: (result: ScanResult) => void;
+  private onSlotsDiscovered?: (slots: DiscoveredSlot[], restaurant: Restaurant) => void;
+  private onScanComplete?: (window: ReleaseWindow, stats: ScanStats) => void;
   private activeScans = new Map<string, boolean>(); // window key -> running
   private proxyManager = getProxyManager();
+
+  // Per-scan state (reset for each window)
+  private completedRestaurants = new Set<number>(); // Restaurant IDs that found slots
+  private totalSlotsFound = 0;
 
   constructor(config: ScannerConfig = {}) {
     this.scanIntervalMs = config.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     this.scanTimeoutSeconds = config.scanTimeoutSeconds ?? DEFAULT_SCAN_TIMEOUT_SECONDS;
     this.apiKey = config.apiKey ?? process.env.RESY_API_KEY ?? "";
     this.onSlotsFound = config.onSlotsFound;
+    this.onSlotsDiscovered = config.onSlotsDiscovered;
+    this.onScanComplete = config.onScanComplete;
   }
 
   /**
    * Start scanning for a release window
-   * Continues until slots are found or timeout
+   * Push-based: emits slots immediately as found, continues scanning other restaurants
    */
   async startScan(window: ReleaseWindow): Promise<ScanResult | null> {
     const windowKey = `${window.releaseTime}-${window.targetDate}`;
@@ -81,6 +111,10 @@ export class Scanner {
       logger.warn({ windowKey }, "Scan already active for this window");
       return null;
     }
+
+    // Reset per-scan state
+    this.completedRestaurants.clear();
+    this.totalSlotsFound = 0;
 
     this.activeScans.set(windowKey, true);
     const startTime = Date.now();
@@ -91,21 +125,42 @@ export class Scanner {
         releaseTime: window.releaseTime,
         targetDate: window.targetDate,
         restaurants: window.restaurants.map((r) => r.name),
+        restaurantCount: window.restaurants.length,
         scanInterval: this.scanIntervalMs,
         timeout: this.scanTimeoutSeconds,
       },
-      "Starting slot scan"
+      "Starting slot scan (push-based)"
     );
 
     let scanCount = 0;
+    const allDiscoveredSlots: DiscoveredSlot[] = [];
 
     try {
       while (this.activeScans.get(windowKey)) {
         const elapsed = Date.now() - startTime;
         if (elapsed > timeoutMs) {
           logger.info(
-            { windowKey, scanCount, elapsed },
-            "Scan timeout reached without finding slots"
+            {
+              windowKey,
+              scanCount,
+              elapsed,
+              completedRestaurants: this.completedRestaurants.size,
+              totalRestaurants: window.restaurants.length,
+            },
+            "Scan timeout reached"
+          );
+          break;
+        }
+
+        // Only scan restaurants not yet completed
+        const pendingRestaurants = window.restaurants.filter(
+          (r) => !this.completedRestaurants.has(r.id)
+        );
+
+        if (pendingRestaurants.length === 0) {
+          logger.info(
+            { windowKey, scanCount, elapsed: Date.now() - startTime },
+            "All restaurants found slots - scan complete"
           );
           break;
         }
@@ -113,32 +168,14 @@ export class Scanner {
         scanCount++;
         const scanStartTime = Date.now();
 
-        // Scan all restaurants in parallel
-        const results = await this.scanAllRestaurants(window);
+        // Scan pending restaurants in parallel
+        const results = await Promise.all(
+          pendingRestaurants.map((r) => this.scanRestaurantAndEmit(r, window))
+        );
 
-        if (results.length > 0) {
-          logger.info(
-            {
-              windowKey,
-              slotsFound: results.length,
-              scanCount,
-              elapsed: Date.now() - startTime,
-            },
-            "Slots discovered!"
-          );
-
-          const scanResult: ScanResult = {
-            window,
-            slots: results,
-            elapsedMs: Date.now() - startTime,
-          };
-
-          if (this.onSlotsFound) {
-            this.onSlotsFound(scanResult);
-          }
-
-          this.activeScans.delete(windowKey);
-          return scanResult;
+        // Collect slots for backwards compatibility
+        for (const slots of results) {
+          allDiscoveredSlots.push(...slots);
         }
 
         // Calculate time to next scan
@@ -152,7 +189,13 @@ export class Scanner {
         // Log progress every 10 scans
         if (scanCount % 10 === 0) {
           logger.debug(
-            { windowKey, scanCount, elapsed: Date.now() - startTime },
+            {
+              windowKey,
+              scanCount,
+              elapsed: Date.now() - startTime,
+              pendingRestaurants: pendingRestaurants.length,
+              completedRestaurants: this.completedRestaurants.size,
+            },
             "Scan progress"
           );
         }
@@ -161,52 +204,90 @@ export class Scanner {
       this.activeScans.delete(windowKey);
     }
 
-    return null;
+    const elapsedMs = Date.now() - startTime;
+
+    // Call scan complete callback
+    if (this.onScanComplete) {
+      const stats: ScanStats = {
+        totalIterations: scanCount,
+        totalSlotsFound: this.totalSlotsFound,
+        restaurantsWithSlots: this.completedRestaurants.size,
+        restaurantsWithoutSlots: window.restaurants.length - this.completedRestaurants.size,
+        elapsedMs,
+      };
+      this.onScanComplete(window, stats);
+    }
+
+    // Backwards compatibility: if using legacy onSlotsFound callback
+    if (this.onSlotsFound && allDiscoveredSlots.length > 0) {
+      const scanResult: ScanResult = {
+        window,
+        slots: allDiscoveredSlots,
+        elapsedMs,
+      };
+      this.onSlotsFound(scanResult);
+      return scanResult;
+    }
+
+    return allDiscoveredSlots.length > 0
+      ? { window, slots: allDiscoveredSlots, elapsedMs }
+      : null;
   }
 
   /**
-   * Scan all restaurants in a window
+   * Scan a single restaurant and emit slots immediately if found
    */
-  private async scanAllRestaurants(window: ReleaseWindow): Promise<DiscoveredSlot[]> {
-    const discovered: DiscoveredSlot[] = [];
+  private async scanRestaurantAndEmit(
+    restaurant: Restaurant,
+    window: ReleaseWindow
+  ): Promise<DiscoveredSlot[]> {
+    try {
+      const slots = await this.scanRestaurant(restaurant, window);
 
-    // Group restaurants by unique venue_id to avoid duplicate requests
-    const uniqueRestaurants = new Map<string, Restaurant>();
-    for (const r of window.restaurants) {
-      uniqueRestaurants.set(r.venue_id, r);
-    }
+      if (slots.length > 0) {
+        // Mark restaurant as done - won't scan again
+        this.completedRestaurants.add(restaurant.id);
+        this.totalSlotsFound += slots.length;
 
-    // Scan each restaurant with rotating proxies
-    const scanPromises = Array.from(uniqueRestaurants.values()).map(async (restaurant) => {
-      try {
-        const slots = await this.scanRestaurant(restaurant, window);
-        return slots;
-      } catch (error) {
-        if (error instanceof ResyAPIError && error.status === 429) {
-          // Rate limited - if using proxies, mark the last used proxy
-          if (config.USE_PROXIES) {
-            const proxy = this.proxyManager.getRotatingProxy();
-            if (proxy) {
-              this.proxyManager.markRateLimited(proxy.id);
-            }
-          }
-          logger.warn({ restaurant: restaurant.name }, "Rate limited during scan");
-        } else {
-          logger.error(
-            { restaurant: restaurant.name, error: String(error) },
-            "Error scanning restaurant"
-          );
+        logger.info(
+          {
+            restaurant: restaurant.name,
+            slotsFound: slots.length,
+            slots: slots.map((s) => ({ time: s.slot.time, type: s.slot.type })),
+          },
+          "Slots discovered - emitting to coordinator"
+        );
+
+        // Fire callback immediately - non-blocking
+        if (this.onSlotsDiscovered) {
+          // Use setImmediate to ensure non-blocking
+          setImmediate(() => {
+            this.onSlotsDiscovered!(slots, restaurant);
+          });
         }
-        return [];
+
+        return slots;
       }
-    });
 
-    const results = await Promise.all(scanPromises);
-    for (const slots of results) {
-      discovered.push(...slots);
+      return [];
+    } catch (error) {
+      if (error instanceof ResyAPIError && error.status === 429) {
+        // Rate limited - if using proxies, mark the last used proxy
+        if (config.USE_PROXIES) {
+          const proxy = this.proxyManager.getRotatingProxy();
+          if (proxy) {
+            this.proxyManager.markRateLimited(proxy.id);
+          }
+        }
+        logger.warn({ restaurant: restaurant.name }, "Rate limited during scan");
+      } else {
+        logger.error(
+          { restaurant: restaurant.name, error: String(error) },
+          "Error scanning restaurant"
+        );
+      }
+      return [];
     }
-
-    return discovered;
   }
 
   /**
@@ -360,6 +441,13 @@ export class Scanner {
    */
   getActiveScanCount(): number {
     return Array.from(this.activeScans.values()).filter(Boolean).length;
+  }
+
+  /**
+   * Get per-restaurant completion status for active scan
+   */
+  getCompletedRestaurants(): Set<number> {
+    return new Set(this.completedRestaurants);
   }
 }
 

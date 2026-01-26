@@ -8,6 +8,10 @@
  * - Slots within a user are tried SEQUENTIALLY (earliest first)
  *
  * Uses in-memory store - no direct DB access on hot path
+ *
+ * NOTE: For the new push-based architecture, use BookingCoordinator instead.
+ * This class is kept for backwards compatibility but the coordinator
+ * provides better per-restaurant tracking and instant slot processing.
  */
 import { ResyClient, ResyAPIError } from "../sdk";
 import { getProxyManager } from "./proxy-manager";
