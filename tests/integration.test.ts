@@ -33,7 +33,7 @@ import type { FindResponse, DetailsResponse } from "../src/sdk/schemas";
 
 // ============ Configuration ============
 
-const VENUE_ID = 59213;
+const VENUE_ID = 5769;
 const AUTH_TOKEN = process.env.RESY_AUTH_TOKEN ?? "";
 const PAYMENT_METHOD_ID = parseInt(process.env.RESY_PAYMENT_METHOD_ID ?? "0", 10);
 const PARTY_SIZE = parseInt(process.env.PARTY_SIZE ?? "2", 10);

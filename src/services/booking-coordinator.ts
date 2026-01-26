@@ -13,7 +13,6 @@ import type { BookingResult, UserBookingResult } from "./executor";
 import type { Restaurant, FullSubscription, Proxy } from "../db/schema";
 import { store } from "../store";
 import { ResyClient, ResyAPIError } from "../sdk";
-import { getProxyManager } from "./proxy-manager";
 import { parseSlotTime } from "../filters";
 import pino from "pino";
 
@@ -23,9 +22,6 @@ const logger = pino({
     options: { colorize: true },
   },
 });
-
-// Rate limit duration when a proxy gets 429'd
-const RATE_LIMIT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * User context for booking - contains auth and preferences
@@ -59,7 +55,6 @@ export interface BookingCoordinatorConfig {
 export class BookingCoordinator {
   private apiKey: string;
   private dryRun: boolean;
-  private proxyManager = getProxyManager();
   private onBookingSuccess?: (result: UserBookingResult) => void;
   private onBookingFailed?: (result: UserBookingResult) => void;
 
@@ -314,7 +309,7 @@ export class BookingCoordinator {
   }
 
   /**
-   * Handle booking errors with categorization
+   * Handle booking errors - log full response to DB and continue
    */
   private handleBookingError(
     error: unknown,
@@ -324,56 +319,38 @@ export class BookingCoordinator {
   ): BookingResult {
     const status = error instanceof ResyAPIError ? error.status : 0;
     const code = error instanceof ResyAPIError ? error.code : undefined;
+    const rawBody = error instanceof ResyAPIError ? error.rawBody : undefined;
     const message = error instanceof Error ? error.message : String(error);
 
-    // Log error (fire-and-forget to DB)
+    // Log full error to DB for analysis (fire-and-forget)
     store.logBookingError({
       user_id: user.userId,
       restaurant_id: slot.restaurant.id,
       http_status: status,
       error_code: code !== undefined ? String(code) : null,
       error_message: message,
-      raw_response: JSON.stringify(error),
+      raw_response: rawBody ?? null,  // Full response body from Resy
     });
 
-    // Known error handling
-    if (status === 412) {
-      this.recordFailure(user, slot, proxy, "Sold out", "sold_out");
-      logger.info(
-        { userId: user.userId, restaurant: slot.restaurant.name, time: slot.slot.time },
-        "Slot sold out"
-      );
-      return { success: false, status: "sold_out", retry: true };
-    }
-
-    if (status === 429) {
-      this.recordFailure(user, slot, proxy, "Rate limited", "failed");
-      // Mark proxy if used
-      if (proxy) {
-        this.proxyManager.markRateLimited(proxy.id, RATE_LIMIT_DURATION_MS);
-      }
-      logger.warn({ userId: user.userId, proxyId: proxy?.id }, "Rate limited");
-      return { success: false, status: "rate_limited", retry: false };
-    }
-
-    if (status === 401 || status === 403) {
-      this.recordFailure(user, slot, proxy, "Auth failed", "failed");
-      logger.error({ userId: user.userId }, "Auth failed - user needs to re-register");
-      return {
-        success: false,
-        status: "auth_failed",
-        retry: false,
-        errorMessage: message,
-      };
-    }
-
-    // Unknown error - log and allow retry
+    // Record failure in booking_attempts
     this.recordFailure(user, slot, proxy, message, "failed");
-    logger.warn({ status, code, message }, "Unknown booking error - will retry");
+
+    // Log for visibility
+    logger.warn(
+      {
+        userId: user.userId,
+        restaurant: slot.restaurant.name,
+        time: slot.slot.time,
+        httpStatus: status,
+        code,
+        rawBody: rawBody?.substring(0, 500),  // Truncate for log
+      },
+      "Booking error - logged to DB"
+    );
 
     return {
       success: false,
-      status: "unknown",
+      status: "failed",
       retry: true,
       errorMessage: message,
     };

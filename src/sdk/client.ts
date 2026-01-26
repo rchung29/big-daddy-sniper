@@ -106,24 +106,25 @@ export class ResyClient {
      */
     private async handleResponse(response: Response, errorMessage: string): Promise<any> {
         if (!response.ok) {
-            let errorBody: any;
+            // Read body as text first (can only read once)
+            const rawBody = await response.text();
+
+            // Try to parse as JSON for code extraction
+            let parsed: any = null;
             try {
-                errorBody = await response.json();
+                parsed = rawBody ? JSON.parse(rawBody) : null;
             } catch {
-                errorBody = await response.text();
+                // Not JSON, that's fine
             }
 
-            // Resy often returns { code: number, error: "message" } or { code: number, message: "message" }
-            const apiMessage = typeof errorBody === "object"
-                ? (errorBody.error || errorBody.message || JSON.stringify(errorBody))
-                : errorBody;
-
-            const apiCode = typeof errorBody === "object" ? errorBody.code : undefined;
+            // Extract code if present
+            const apiCode = parsed?.code;
 
             throw new ResyAPIError(
-                `${errorMessage}: ${response.status} ${apiMessage}`,
+                `${errorMessage}: ${response.status}`,
                 response.status,
-                apiCode
+                apiCode,
+                rawBody  // Pass full raw body for logging
             );
         }
         return response.json();

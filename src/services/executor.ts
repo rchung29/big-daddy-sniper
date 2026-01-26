@@ -37,7 +37,7 @@ const RATE_LIMIT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
  */
 export interface BookingResult {
   success: boolean;
-  status: "success" | "sold_out" | "rate_limited" | "auth_failed" | "unknown";
+  status: "success" | "failed" | "sold_out" | "rate_limited" | "auth_failed" | "unknown";
   retry: boolean;
   reservationId?: number;
   resyToken?: string;
