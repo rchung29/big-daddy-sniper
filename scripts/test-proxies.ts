@@ -97,7 +97,7 @@ async function main() {
     .from("proxies")
     .select("id, url, enabled")
     .eq("enabled", true)
-    .eq("type", "isp");
+    .eq("type", "datacenter");
 
   if (error) {
     console.error("Failed to fetch proxies:", error.message);
