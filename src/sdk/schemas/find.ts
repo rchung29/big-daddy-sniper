@@ -38,7 +38,7 @@ export const FindSlotSchema = z.object({
     config: SlotConfigSchema,
     date: SlotDateSchema,
     exclusive: z.object({ id: z.number().optional(), is_eligible: z.boolean().optional() }).passthrough().optional(),
-    floorplan: z.object({ id: z.number().optional() }).passthrough().optional(),
+    floorplan: z.object({ id: z.number().nullable().optional() }).passthrough().optional(),
     market: z.object({ date: z.object({ off: z.number(), on: z.number() }) }).passthrough().optional(),
     meta: z.object({
         size: z.object({ assumed: z.number().optional() }).passthrough(),

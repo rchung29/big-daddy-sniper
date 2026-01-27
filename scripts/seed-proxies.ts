@@ -1,8 +1,7 @@
 /**
- * Seed datacenter proxies into the database
+ * Seed proxies into the database
  *
- * Deletes all existing datacenter proxies and replaces with new list.
- * ISP proxies are preserved.
+ * Wipes all existing proxies and replaces with new list.
  *
  * Run with: bun scripts/seed-proxies.ts
  */
@@ -17,33 +16,36 @@ const logger = pino({
 });
 
 // Bright Data proxy format: host:port:username:password
-const BRIGHT_DATA_PROXIES = [
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-180.149.13.171:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-185.246.174.193:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-161.123.239.167:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.90.180:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-119.13.216.205:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.74.238:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-206.204.6.49:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-206.204.26.234:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-161.123.110.32:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-45.95.74.26:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.89.118:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-152.39.211.26:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-152.39.230.236:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-2.57.78.199:4qg8exdwbnz4",
-  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-204.44.98.190:4qg8exdwbnz4",
+const DATACENTER_PROXIES = [
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-109.70.67.131:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-185.182.21.115:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-94.46.2.194:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-185.90.243.118:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-109.198.32.206:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-161.129.172.82:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-77.83.69.115:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-161.123.98.173:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-180.149.15.51:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-209.99.170.254:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-92.119.169.12:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-193.111.184.204:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-152.39.250.37:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-2.58.79.134:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-185.134.221.85:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-178.171.40.13:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-188.95.153.93:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-94.176.119.185:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-204.3.16.127:t4wvz8ydjte4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-85.89.196.3:t4wvz8ydjte4",
 ];
 
-// Oxylabs datacenter proxies
-const OXYLABS_USERNAME = "user-testing_tEg3T-country-US";
-const OXYLABS_PASSWORD = "1cYiVgX+skg+sEL9";
-const OXYLABS_PROXIES = [
-  { host: "dc.oxylabs.io", port: 8001, ip: "93.115.200.159" },
-  { host: "dc.oxylabs.io", port: 8002, ip: "93.115.200.158" },
-  { host: "dc.oxylabs.io", port: 8003, ip: "93.115.200.157" },
-  { host: "dc.oxylabs.io", port: 8004, ip: "93.115.200.156" },
-  { host: "dc.oxylabs.io", port: 8005, ip: "93.115.200.155" },
+const ISP_PROXIES = [
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-85.28.49.146:nustt43ofgg4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-158.46.159.227:nustt43ofgg4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-89.184.29.47:nustt43ofgg4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-158.46.203.154:nustt43ofgg4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-176.100.132.147:nustt43ofgg4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-93.177.92.111:nustt43ofgg4",
 ];
 
 function parseBrightDataProxy(proxyStr: string): string {
@@ -56,11 +58,6 @@ function parseBrightDataProxy(proxyStr: string): string {
 
   const encodedPassword = encodeURIComponent(password);
   return `http://${username}:${encodedPassword}@${host}:${port}`;
-}
-
-function buildOxylabsProxyUrl(host: string, port: number): string {
-  const encodedPassword = encodeURIComponent(OXYLABS_PASSWORD);
-  return `http://${OXYLABS_USERNAME}:${encodedPassword}@${host}:${port}`;
 }
 
 async function main() {
@@ -76,24 +73,24 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Step 1: Delete all datacenter proxies (preserve ISP proxies)
-  logger.info("Deleting all existing datacenter proxies...");
+  // Step 1: Delete ALL proxies
+  logger.info("Deleting all existing proxies...");
   const { error: deleteError } = await supabase
     .from("proxies")
     .delete()
-    .eq("type", "datacenter");
+    .neq("id", 0); // Delete all rows
 
   if (deleteError) {
-    logger.error({ error: deleteError.message }, "Failed to delete datacenter proxies");
+    logger.error({ error: deleteError.message }, "Failed to delete proxies");
     process.exit(1);
   }
-  logger.info("Datacenter proxies deleted.");
+  logger.info("All proxies deleted.");
 
   // Step 2: Build proxy list
-  const proxies: Array<{ url: string; type: "datacenter"; enabled: boolean }> = [];
+  const proxies: Array<{ url: string; type: "datacenter" | "isp"; enabled: boolean }> = [];
 
-  // Add Bright Data proxies
-  for (const str of BRIGHT_DATA_PROXIES) {
+  // Add datacenter proxies
+  for (const str of DATACENTER_PROXIES) {
     proxies.push({
       url: parseBrightDataProxy(str),
       type: "datacenter",
@@ -101,16 +98,16 @@ async function main() {
     });
   }
 
-  // Add Oxylabs proxies
-  for (const ox of OXYLABS_PROXIES) {
+  // Add ISP proxies
+  for (const str of ISP_PROXIES) {
     proxies.push({
-      url: buildOxylabsProxyUrl(ox.host, ox.port),
-      type: "datacenter",
+      url: parseBrightDataProxy(str),
+      type: "isp",
       enabled: true,
     });
   }
 
-  logger.info({ count: proxies.length }, "Inserting datacenter proxies...");
+  logger.info({ datacenter: DATACENTER_PROXIES.length, isp: ISP_PROXIES.length }, "Inserting proxies...");
 
   // Step 3: Insert all proxies
   const { error: insertError } = await supabase.from("proxies").insert(proxies);
@@ -120,7 +117,7 @@ async function main() {
     process.exit(1);
   }
 
-  logger.info({ count: proxies.length }, "Datacenter proxies seeded successfully");
+  logger.info("Proxies seeded successfully");
 
   // Verify
   const { data: allProxies } = await supabase

@@ -84,6 +84,9 @@ async function main(): Promise<void> {
     },
   });
 
+  // Initialize coordinator (sets up ISP proxy pool)
+  coordinator.initialize();
+
   // Initialize scanner with push-based callbacks
   const scanner = getScanner({
     scanIntervalMs: config.SCAN_INTERVAL_MS,
@@ -128,7 +131,7 @@ async function main(): Promise<void> {
           `Iterations: ${stats.totalIterations}`,
           `Slots found: ${stats.totalSlotsFound}`,
           `Restaurants with slots: ${stats.restaurantsWithSlots}/${window.restaurants.length}`,
-          `Bookings attempted: ${coordinator.getStats().inFlightCount + coordinator.getStats().successfulBookings}`,
+          `Active processors: ${coordinator.getStats().activeProcessors}`,
           `Successful bookings: ${coordinator.getStats().successfulBookings}`,
         ].join("\n");
 

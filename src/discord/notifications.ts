@@ -3,7 +3,7 @@
  * Sends DMs to users on booking events
  */
 import { Client, EmbedBuilder, type User } from "discord.js";
-import type { UserBookingResult } from "../services/executor";
+import type { UserBookingResult } from "../services/booking-coordinator";
 import type { DiscoveredSlot } from "../services/scanner";
 import pino from "pino";
 

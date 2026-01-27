@@ -178,9 +178,10 @@ export class Scanner {
           allDiscoveredSlots.push(...slots);
         }
 
-        // Calculate time to next scan
+        // Calculate time to next scan with jitter (±500ms) to avoid predictable patterns
         const scanDuration = Date.now() - scanStartTime;
-        const sleepTime = Math.max(0, this.scanIntervalMs - scanDuration);
+        const jitter = Math.floor(Math.random() * 1000) - 500; // -500 to +500ms
+        const sleepTime = Math.max(0, this.scanIntervalMs - scanDuration + jitter);
 
         if (sleepTime > 0) {
           await sleep(sleepTime);

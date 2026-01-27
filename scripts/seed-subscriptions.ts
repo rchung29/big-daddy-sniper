@@ -19,7 +19,7 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function seedSubscriptions() {
-  const userIds = [1, 2];
+  const userIds = [1];
   const partySize = 4;
   const timeWindowStart = "19:00"; // 7:00 PM
   const timeWindowEnd = "22:00";   // 10:00 PM

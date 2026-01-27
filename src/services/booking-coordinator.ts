@@ -2,18 +2,35 @@
  * Booking Coordinator
  *
  * Receives slot events from scanner and coordinates booking execution.
- * Handles deduplication at multiple levels:
- * - In-flight bookings: Don't attempt same slot twice for same user
- * - Successful bookings: Don't keep trying after success for a restaurant/date
  *
- * Push model: slots come in immediately as discovered, bookings fire instantly
+ * Key Architecture:
+ * - Sequential slots per restaurant: Try one slot at a time, stop on success
+ * - ISP proxy pool: 6 shared ISP proxies allocated per-restaurant, not per-user
+ * - Error handling: 500 empty → switch proxy, retry; "sold out" → try next slot
+ * - No parallel booking requests per user/restaurant combo
+ *
+ * Deduplication:
+ * - In-flight processors: Don't start multiple processors for same (user, restaurant, date)
+ * - Successful bookings: Don't keep trying after success
  */
 import type { DiscoveredSlot } from "./scanner";
-import type { BookingResult, UserBookingResult } from "./executor";
 import type { Restaurant, FullSubscription, Proxy } from "../db/schema";
+
+/**
+ * Result of executing bookings for a user
+ */
+export interface UserBookingResult {
+  userId: number;
+  discordId: string;
+  success: boolean;
+  bookedSlot?: DiscoveredSlot;
+  reservationId?: number;
+  errorMessage?: string;
+}
 import { store } from "../store";
 import { ResyClient, ResyAPIError } from "../sdk";
 import { parseSlotTime } from "../filters";
+import { getIspProxyPool, type IspProxyPool } from "./isp-proxy-pool";
 import pino from "pino";
 
 const logger = pino({
@@ -22,6 +39,36 @@ const logger = pino({
     options: { colorize: true },
   },
 });
+
+// Maximum retries per slot when hitting WAF blocks
+const MAX_RETRIES_PER_SLOT = 2;
+
+// Timeout waiting for ISP proxy
+const PROXY_ACQUIRE_TIMEOUT_MS = 10_000;
+
+/**
+ * Booking status types for internal tracking
+ */
+type BookingStatus =
+  | "success"
+  | "waf_blocked"
+  | "sold_out"
+  | "rate_limited"
+  | "auth_failed"
+  | "server_error"
+  | "no_book_token"
+  | "unknown";
+
+/**
+ * Internal booking result with status
+ */
+interface InternalBookingResult {
+  success: boolean;
+  status: BookingStatus;
+  reservationId?: number;
+  resyToken?: string;
+  errorMessage?: string;
+}
 
 /**
  * User context for booking - contains auth and preferences
@@ -49,8 +96,16 @@ export interface BookingCoordinatorConfig {
 }
 
 /**
+ * Slot queue entry
+ */
+interface QueuedSlot {
+  slot: DiscoveredSlot;
+  subscription: FullSubscription;
+}
+
+/**
  * Booking Coordinator class
- * Receives slot events and spawns executor tasks with deduplication
+ * Receives slot events and spawns sequential processors with deduplication
  */
 export class BookingCoordinator {
   private apiKey: string;
@@ -58,20 +113,35 @@ export class BookingCoordinator {
   private onBookingSuccess?: (result: UserBookingResult) => void;
   private onBookingFailed?: (result: UserBookingResult) => void;
 
-  // Deduplication: track in-flight bookings "userId:configId" → Promise
-  private inFlight = new Map<string, Promise<BookingResult>>();
+  // ISP proxy pool
+  private ispPool: IspProxyPool;
 
-  // Deduplication: track successful bookings "userId:restaurantId:targetDate"
+  // Active processors: "userId:restaurantId:targetDate" → Promise
+  private activeProcessors = new Map<string, Promise<InternalBookingResult>>();
+
+  // Successful bookings: "userId:restaurantId:targetDate"
   private successfulBookings = new Set<string>();
 
-  // Track rate-limited users (stop trying for this window)
+  // Rate-limited users (stop trying for this window)
   private rateLimitedUsers = new Set<number>();
+
+  // Auth-failed users (bad token)
+  private authFailedUsers = new Set<number>();
 
   constructor(config: BookingCoordinatorConfig = {}) {
     this.apiKey = config.apiKey ?? process.env.RESY_API_KEY ?? "";
     this.dryRun = config.dryRun ?? process.env.DRY_RUN === "true";
     this.onBookingSuccess = config.onBookingSuccess;
     this.onBookingFailed = config.onBookingFailed;
+    this.ispPool = getIspProxyPool();
+  }
+
+  /**
+   * Initialize the coordinator (call after store is initialized)
+   */
+  initialize(): void {
+    this.ispPool.initialize();
+    logger.info("Booking coordinator initialized with ISP proxy pool");
   }
 
   /**
@@ -79,6 +149,8 @@ export class BookingCoordinator {
    * This is the main entry point from the scanner
    */
   onSlotsDiscovered(slots: DiscoveredSlot[], restaurant: Restaurant): void {
+    if (slots.length === 0) return;
+
     logger.info(
       {
         restaurant: restaurant.name,
@@ -88,8 +160,7 @@ export class BookingCoordinator {
       "Coordinator received slots"
     );
 
-    // Get users subscribed to this restaurant
-    const subscriptions = store.getSubscriptionsByRestaurant(restaurant.id);
+    // Get all subscriptions for this restaurant
     const fullSubscriptions = this.getFullSubscriptionsForRestaurant(restaurant.id);
 
     if (fullSubscriptions.length === 0) {
@@ -97,55 +168,49 @@ export class BookingCoordinator {
       return;
     }
 
-    // For each slot, try to book for each eligible user
-    for (const discoveredSlot of slots) {
-      this.processSlotForUsers(discoveredSlot, fullSubscriptions);
-    }
-  }
+    // Group by user and start processors
+    const userSubscriptions = this.groupSubscriptionsByUser(fullSubscriptions);
 
-  /**
-   * Process a single slot for all eligible users
-   */
-  private processSlotForUsers(slot: DiscoveredSlot, subscriptions: FullSubscription[]): void {
-    for (const sub of subscriptions) {
-      // Check if slot matches user's preferences
-      if (!this.slotMatchesSubscription(slot, sub)) {
+    for (const [userId, subs] of userSubscriptions) {
+      const sub = subs[0]; // Use first for user context
+      const targetDate = slots[0].targetDate;
+      const key = `${userId}:${restaurant.id}:${targetDate}`;
+
+      // Skip if already processing this combination
+      if (this.activeProcessors.has(key)) {
+        logger.debug({ key }, "Skipping - processor already active");
         continue;
       }
 
-      const userId = sub.user_id;
-      const configId = slot.slot.config_id;
-      const restaurantId = slot.restaurant.id;
-      const targetDate = slot.targetDate;
-
-      // Deduplication key for in-flight
-      const inFlightKey = `${userId}:${configId}`;
-      // Deduplication key for success
-      const successKey = `${userId}:${restaurantId}:${targetDate}`;
-
-      // Skip if user already has successful booking for this restaurant/date
-      if (this.successfulBookings.has(successKey)) {
-        logger.debug(
-          { userId, restaurant: slot.restaurant.name, targetDate },
-          "Skipping - user already has successful booking"
-        );
-        continue;
-      }
-
-      // Skip if already attempting this exact slot for this user
-      if (this.inFlight.has(inFlightKey)) {
-        logger.debug(
-          { userId, configId },
-          "Skipping - booking already in flight"
-        );
+      // Skip if already has successful booking
+      if (this.successfulBookings.has(key)) {
+        logger.debug({ key }, "Skipping - already has successful booking");
         continue;
       }
 
       // Skip if user is rate-limited
       if (this.rateLimitedUsers.has(userId)) {
-        logger.debug({ userId }, "Skipping - user is rate limited");
+        logger.debug({ userId }, "Skipping - user rate limited");
         continue;
       }
+
+      // Skip if user has auth failure
+      if (this.authFailedUsers.has(userId)) {
+        logger.debug({ userId }, "Skipping - user auth failed");
+        continue;
+      }
+
+      // Filter slots for this user's preferences
+      const userSlots = this.filterSlotsForUser(slots, subs);
+      if (userSlots.length === 0) {
+        logger.debug({ userId, restaurant: restaurant.name }, "No matching slots for user preferences");
+        continue;
+      }
+
+      // Sort by time (earliest first)
+      userSlots.sort((a, b) =>
+        parseSlotTime(a.slot.slot.time) - parseSlotTime(b.slot.slot.time)
+      );
 
       // Build user context
       const userContext: UserBookingContext = {
@@ -160,31 +225,30 @@ export class BookingCoordinator {
         tableTypes: sub.table_types,
       };
 
-      // Fire booking attempt - non-blocking
-      const bookingPromise = this.bookSlot(userContext, slot);
-      this.inFlight.set(inFlightKey, bookingPromise);
+      // Start processor (non-blocking)
+      const processorPromise = this.processUserRestaurant(userContext, userSlots);
+      this.activeProcessors.set(key, processorPromise);
 
       // Handle result asynchronously
-      bookingPromise.then((result) => {
-        this.inFlight.delete(inFlightKey);
+      processorPromise.then((result) => {
+        this.activeProcessors.delete(key);
 
         if (result.success) {
-          // Mark as successful - no more attempts for this restaurant/date
-          this.successfulBookings.add(successKey);
+          this.successfulBookings.add(key);
 
+          const bookedSlot = userSlots[0]; // We don't track which slot succeeded, use first as placeholder
           const userResult: UserBookingResult = {
             userId,
             discordId: sub.discord_id,
             success: true,
-            bookedSlot: slot,
+            bookedSlot: bookedSlot.slot,
             reservationId: result.reservationId,
           };
 
           logger.info(
             {
               userId,
-              restaurant: slot.restaurant.name,
-              time: slot.slot.time,
+              restaurant: restaurant.name,
               reservationId: result.reservationId,
             },
             "BOOKING SUCCESS!"
@@ -192,79 +256,210 @@ export class BookingCoordinator {
 
           this.onBookingSuccess?.(userResult);
         } else if (result.status === "rate_limited") {
-          // Stop trying for this user this window
           this.rateLimitedUsers.add(userId);
           logger.warn({ userId }, "User rate limited - stopping attempts");
+        } else if (result.status === "auth_failed") {
+          this.authFailedUsers.add(userId);
+          logger.error({ userId }, "User auth failed - needs to re-register");
         }
       });
     }
   }
 
   /**
-   * Book a single slot for a single user
+   * Process booking for a user/restaurant combination
+   * Tries slots sequentially, handles WAF retries
    */
-  async bookSlot(user: UserBookingContext, slot: DiscoveredSlot): Promise<BookingResult> {
-    const proxy = user.preferredProxyId
-      ? store.getProxyById(user.preferredProxyId) ?? null
-      : null;
+  private async processUserRestaurant(
+    user: UserBookingContext,
+    queuedSlots: QueuedSlot[]
+  ): Promise<InternalBookingResult> {
+    let slotIndex = 0;
+    let retryCount = 0;
 
     logger.info(
       {
         userId: user.userId,
-        restaurant: slot.restaurant.name,
-        time: slot.slot.time,
-        partySize: user.partySize,
-        proxyId: proxy?.id ?? "localhost",
+        slotsToTry: queuedSlots.length,
       },
-      "Attempting booking"
+      "Starting sequential slot processor"
     );
 
-    // Record booking attempt (fire-and-forget to DB)
-    store.createBookingAttempt({
-      user_id: user.userId,
-      restaurant_id: slot.restaurant.id,
-      target_date: slot.targetDate,
-      slot_time: slot.slot.time,
-      status: "pending",
-      reservation_id: null,
-      error_message: null,
-      proxy_used: proxy?.url ?? null,
-    });
+    while (slotIndex < queuedSlots.length) {
+      const { slot: discoveredSlot, subscription } = queuedSlots[slotIndex];
 
-    const client = new ResyClient({
-      apiKey: this.apiKey,
-      authToken: user.resyAuthToken,
-      proxyUrl: proxy?.url,
-    });
+      // Acquire ISP proxy
+      logger.debug(
+        { userId: user.userId, slotTime: discoveredSlot.slot.time },
+        "Acquiring ISP proxy"
+      );
 
-    return this.attemptBooking(client, slot, user, proxy);
+      const proxy = await this.ispPool.acquire(PROXY_ACQUIRE_TIMEOUT_MS);
+      if (!proxy) {
+        logger.warn(
+          { userId: user.userId },
+          "Failed to acquire ISP proxy - no proxies available"
+        );
+        return {
+          success: false,
+          status: "unknown",
+          errorMessage: "No ISP proxy available",
+        };
+      }
+
+      logger.info(
+        {
+          userId: user.userId,
+          restaurant: discoveredSlot.restaurant.name,
+          slotTime: discoveredSlot.slot.time,
+          proxyId: proxy.id,
+          slotIndex,
+          retryCount,
+        },
+        "Attempting booking"
+      );
+
+      // Record booking attempt
+      store.createBookingAttempt({
+        user_id: user.userId,
+        restaurant_id: discoveredSlot.restaurant.id,
+        target_date: discoveredSlot.targetDate,
+        slot_time: discoveredSlot.slot.time,
+        status: "pending",
+        reservation_id: null,
+        error_message: null,
+        proxy_used: proxy.url,
+      });
+
+      try {
+        const result = await this.attemptBooking(
+          user,
+          discoveredSlot,
+          subscription,
+          proxy
+        );
+
+        if (result.success) {
+          this.ispPool.release(proxy.id);
+          logger.debug({ proxyId: proxy.id }, "Released ISP proxy after success");
+
+          // Record success
+          this.recordSuccess(user, discoveredSlot, proxy, result.reservationId!);
+          return result;
+        }
+
+        // Handle different failure types
+        switch (result.status) {
+          case "waf_blocked":
+            // WAF blocked - mark proxy bad, possibly retry
+            this.ispPool.markBad(proxy.id);
+            retryCount++;
+
+            if (retryCount >= MAX_RETRIES_PER_SLOT) {
+              logger.warn(
+                { userId: user.userId, slotTime: discoveredSlot.slot.time, retryCount },
+                "Max WAF retries reached - moving to next slot"
+              );
+              slotIndex++;
+              retryCount = 0;
+            } else {
+              logger.info(
+                { userId: user.userId, slotTime: discoveredSlot.slot.time, retryCount },
+                "WAF blocked - retrying with new proxy"
+              );
+            }
+            break;
+
+          case "sold_out":
+            // Slot taken - try next
+            this.ispPool.release(proxy.id);
+            logger.info(
+              { userId: user.userId, slotTime: discoveredSlot.slot.time },
+              "Slot sold out - trying next"
+            );
+            this.recordFailure(user, discoveredSlot, proxy, "Sold out", "sold_out");
+            slotIndex++;
+            retryCount = 0;
+            break;
+
+          case "rate_limited":
+            // Rate limited - stop for this user
+            this.ispPool.markBad(proxy.id);
+            this.recordFailure(user, discoveredSlot, proxy, "Rate limited", "failed");
+            return result;
+
+          case "auth_failed":
+            // Auth failed - stop for this user
+            this.ispPool.release(proxy.id);
+            this.recordFailure(user, discoveredSlot, proxy, "Auth failed", "failed");
+            return result;
+
+          default:
+            // Other error - try next slot
+            this.ispPool.release(proxy.id);
+            logger.warn(
+              { userId: user.userId, slotTime: discoveredSlot.slot.time, status: result.status },
+              "Booking failed - trying next slot"
+            );
+            this.recordFailure(user, discoveredSlot, proxy, result.errorMessage ?? "Unknown error", "failed");
+            slotIndex++;
+            retryCount = 0;
+        }
+      } catch (error) {
+        // Unexpected error - release proxy and try next slot
+        this.ispPool.release(proxy.id);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(
+          { userId: user.userId, error: errorMsg },
+          "Unexpected error during booking"
+        );
+        this.recordFailure(user, discoveredSlot, proxy, errorMsg, "failed");
+        slotIndex++;
+        retryCount = 0;
+      }
+    }
+
+    logger.info(
+      { userId: user.userId, slotsAttempted: queuedSlots.length },
+      "All slots failed"
+    );
+
+    return {
+      success: false,
+      status: "unknown",
+      errorMessage: "All slots failed",
+    };
   }
 
   /**
    * Attempt to book a single slot
    */
   private async attemptBooking(
-    client: ResyClient,
-    slot: DiscoveredSlot,
     user: UserBookingContext,
-    proxy: Proxy | null
-  ): Promise<BookingResult> {
+    slot: DiscoveredSlot,
+    subscription: FullSubscription,
+    proxy: Proxy
+  ): Promise<InternalBookingResult> {
+    const client = new ResyClient({
+      apiKey: this.apiKey,
+      authToken: user.resyAuthToken,
+      proxyUrl: proxy.url,
+    });
+
     try {
       // Step 1: Get booking details and token
       const details = await client.getDetails({
         venue_id: Number(slot.restaurant.venue_id),
         day: slot.targetDate,
-        party_size: user.partySize,
+        party_size: subscription.party_size,
         config_id: slot.slot.config_id,
       });
 
       const bookToken = details.book_token?.value;
       if (!bookToken) {
-        this.recordFailure(user, slot, proxy, "No book token received");
         return {
           success: false,
-          status: "unknown",
-          retry: true,
+          status: "no_book_token",
           errorMessage: "No book token received",
         };
       }
@@ -279,11 +474,9 @@ export class BookingCoordinator {
           },
           "[DRY RUN] Would book slot"
         );
-        this.recordSuccess(user, slot, proxy, 0);
         return {
           success: true,
           status: "success",
-          retry: false,
           reservationId: 0,
           resyToken: "dry-run",
         };
@@ -295,45 +488,40 @@ export class BookingCoordinator {
         payment_method_id: user.resyPaymentMethodId,
       });
 
-      this.recordSuccess(user, slot, proxy, bookResult.reservation_id);
       return {
         success: true,
         status: "success",
-        retry: false,
         reservationId: bookResult.reservation_id,
         resyToken: bookResult.resy_token,
       };
     } catch (error) {
-      return this.handleBookingError(error, user, slot, proxy);
+      return this.classifyError(error, user, slot);
     }
   }
 
   /**
-   * Handle booking errors - log full response to DB and continue
+   * Classify an error into a booking status
+   * Detects WAF blocks (500 with empty body) vs other errors
    */
-  private handleBookingError(
+  private classifyError(
     error: unknown,
     user: UserBookingContext,
-    slot: DiscoveredSlot,
-    proxy: Proxy | null
-  ): BookingResult {
+    slot: DiscoveredSlot
+  ): InternalBookingResult {
     const status = error instanceof ResyAPIError ? error.status : 0;
     const code = error instanceof ResyAPIError ? error.code : undefined;
     const rawBody = error instanceof ResyAPIError ? error.rawBody : undefined;
     const message = error instanceof Error ? error.message : String(error);
 
-    // Log full error to DB for analysis (fire-and-forget)
+    // Log error to DB for analysis
     store.logBookingError({
       user_id: user.userId,
       restaurant_id: slot.restaurant.id,
       http_status: status,
       error_code: code !== undefined ? String(code) : null,
       error_message: message,
-      raw_response: rawBody ?? null,  // Full response body from Resy
+      raw_response: rawBody ?? null,
     });
-
-    // Record failure in booking_attempts
-    this.recordFailure(user, slot, proxy, message, "failed");
 
     // Log for visibility
     logger.warn(
@@ -343,15 +531,65 @@ export class BookingCoordinator {
         time: slot.slot.time,
         httpStatus: status,
         code,
-        rawBody: rawBody?.substring(0, 500),  // Truncate for log
+        rawBodyLength: rawBody?.length ?? 0,
+        rawBodyPreview: rawBody?.substring(0, 200),
       },
-      "Booking error - logged to DB"
+      "Booking error - classifying"
     );
 
+    // WAF block detection: 500 with empty or very short body
+    if (status === 500) {
+      const isEmpty = !rawBody || rawBody.trim().length === 0 || rawBody.trim() === "{}";
+      if (isEmpty) {
+        logger.info(
+          { userId: user.userId, httpStatus: status },
+          "Detected WAF block (500 empty body)"
+        );
+        return {
+          success: false,
+          status: "waf_blocked",
+          errorMessage: "WAF blocked (500 empty body)",
+        };
+      }
+      // 500 with JSON body is a server error, not WAF
+      return {
+        success: false,
+        status: "server_error",
+        errorMessage: message,
+      };
+    }
+
+    // 412 = Slot taken (Precondition Failed)
+    if (status === 412) {
+      return {
+        success: false,
+        status: "sold_out",
+        errorMessage: "Slot no longer available",
+      };
+    }
+
+    // 429 = Rate limited
+    if (status === 429) {
+      return {
+        success: false,
+        status: "rate_limited",
+        errorMessage: "Rate limited",
+      };
+    }
+
+    // 401/403 = Auth failed
+    if (status === 401 || status === 403) {
+      return {
+        success: false,
+        status: "auth_failed",
+        errorMessage: message,
+      };
+    }
+
+    // Unknown error
     return {
       success: false,
-      status: "failed",
-      retry: true,
+      status: "unknown",
       errorMessage: message,
     };
   }
@@ -362,7 +600,7 @@ export class BookingCoordinator {
   private recordSuccess(
     user: UserBookingContext,
     slot: DiscoveredSlot,
-    proxy: Proxy | null,
+    proxy: Proxy,
     reservationId: number
   ): void {
     store.createBookingAttempt({
@@ -373,7 +611,7 @@ export class BookingCoordinator {
       status: "success",
       reservation_id: reservationId,
       error_message: null,
-      proxy_used: proxy?.url ?? null,
+      proxy_used: proxy.url,
     });
   }
 
@@ -383,7 +621,7 @@ export class BookingCoordinator {
   private recordFailure(
     user: UserBookingContext,
     slot: DiscoveredSlot,
-    proxy: Proxy | null,
+    proxy: Proxy,
     errorMessage: string,
     status: "failed" | "sold_out" = "failed"
   ): void {
@@ -395,12 +633,33 @@ export class BookingCoordinator {
       status,
       reservation_id: null,
       error_message: errorMessage,
-      proxy_used: proxy?.url ?? null,
+      proxy_used: proxy.url,
     });
   }
 
   /**
-   * Check if a slot matches a user's subscription preferences
+   * Filter slots for user's subscription preferences
+   */
+  private filterSlotsForUser(
+    slots: DiscoveredSlot[],
+    subscriptions: FullSubscription[]
+  ): QueuedSlot[] {
+    const result: QueuedSlot[] = [];
+
+    for (const slot of slots) {
+      for (const sub of subscriptions) {
+        if (this.slotMatchesSubscription(slot, sub)) {
+          result.push({ slot, subscription: sub });
+          break; // Only add once per slot
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Check if a slot matches a subscription's preferences
    */
   private slotMatchesSubscription(slot: DiscoveredSlot, sub: FullSubscription): boolean {
     // Check time window
@@ -434,6 +693,21 @@ export class BookingCoordinator {
   }
 
   /**
+   * Group subscriptions by user ID
+   */
+  private groupSubscriptionsByUser(
+    subscriptions: FullSubscription[]
+  ): Map<number, FullSubscription[]> {
+    const grouped = new Map<number, FullSubscription[]>();
+    for (const sub of subscriptions) {
+      const existing = grouped.get(sub.user_id) ?? [];
+      existing.push(sub);
+      grouped.set(sub.user_id, existing);
+    }
+    return grouped;
+  }
+
+  /**
    * Get full subscriptions for a restaurant (with user auth data)
    */
   private getFullSubscriptionsForRestaurant(restaurantId: number): FullSubscription[] {
@@ -442,12 +716,13 @@ export class BookingCoordinator {
 
   /**
    * Reset state for a new scan window
-   * Called at the start of each release window
    */
   reset(): void {
-    this.inFlight.clear();
+    this.activeProcessors.clear();
     this.successfulBookings.clear();
     this.rateLimitedUsers.clear();
+    this.authFailedUsers.clear();
+    this.ispPool.reset();
     logger.info("Coordinator state reset for new window");
   }
 
@@ -455,14 +730,23 @@ export class BookingCoordinator {
    * Get coordinator stats
    */
   getStats(): {
-    inFlightCount: number;
+    activeProcessors: number;
     successfulBookings: number;
     rateLimitedUsers: number;
+    authFailedUsers: number;
+    proxyPoolStatus: {
+      available: number;
+      inUse: number;
+      cooldown: number;
+      total: number;
+    };
   } {
     return {
-      inFlightCount: this.inFlight.size,
+      activeProcessors: this.activeProcessors.size,
       successfulBookings: this.successfulBookings.size,
       rateLimitedUsers: this.rateLimitedUsers.size,
+      authFailedUsers: this.authFailedUsers.size,
+      proxyPoolStatus: this.ispPool.getStatus(),
     };
   }
 }

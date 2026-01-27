@@ -87,7 +87,7 @@ export interface BookingError {
 export interface Proxy {
   id: number;
   url: string;
-  type: "residential" | "datacenter";
+  type: "datacenter" | "isp";
   enabled: boolean;
   last_used_at: Date | null;
   rate_limited_until: Date | null;
