@@ -1,9 +1,10 @@
 /**
- * Seed subscriptions for user_id=1
- * Creates a subscription for every active restaurant
+ * Seed subscriptions for user_id=2
+ *
+ * DELETES ALL EXISTING SUBSCRIPTIONS first, then creates fresh ones for every active restaurant.
  * - Party size: 4
- * - Time window: 7:00 PM - 10:00 PM EST
- * - Target days: Friday, Saturday, Sunday
+ * - Time window: 7:00 PM - 10:00 PM
+ * - Target days: null (any day)
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -18,15 +19,26 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function seedSubscriptions() {
-  const userId = 2;
+  const userIds = [1, 2];
   const partySize = 4;
   const timeWindowStart = "19:00"; // 7:00 PM
   const timeWindowEnd = "22:00";   // 10:00 PM
-  const targetDays = [5, 6, 0];    // Friday, Saturday, Sunday
 
-  console.log("Fetching active restaurants...");
+  // Step 1: Delete all existing subscriptions
+  console.log("Deleting all existing subscriptions...");
+  const { error: deleteError } = await supabase
+    .from("user_subscriptions")
+    .delete()
+    .neq("id", 0); // Delete all rows (neq id 0 matches everything)
 
-  // Get all active restaurants
+  if (deleteError) {
+    console.error("Failed to delete subscriptions:", deleteError.message);
+    process.exit(1);
+  }
+  console.log("All subscriptions deleted.");
+
+  // Step 2: Fetch active restaurants
+  console.log("\nFetching active restaurants...");
   const { data: restaurants, error: fetchError } = await supabase
     .from("restaurants")
     .select("id, name")
@@ -44,26 +56,36 @@ async function seedSubscriptions() {
 
   console.log(`Found ${restaurants.length} active restaurants`);
 
-  // Create subscriptions for each restaurant
-  const subscriptions = restaurants.map((r) => ({
-    user_id: userId,
-    restaurant_id: r.id,
-    party_size: partySize,
-    time_window_start: timeWindowStart,
-    time_window_end: timeWindowEnd,
-    target_days: targetDays,
-    enabled: true,
-  }));
+  // Step 3: Create subscriptions for each user and restaurant
+  const subscriptions: Array<{
+    user_id: number;
+    restaurant_id: number;
+    party_size: number;
+    time_window_start: string;
+    time_window_end: string;
+    target_days: null;
+    enabled: boolean;
+  }> = [];
 
-  console.log(`Creating ${subscriptions.length} subscriptions for user_id=${userId}...`);
+  for (const userId of userIds) {
+    for (const r of restaurants) {
+      subscriptions.push({
+        user_id: userId,
+        restaurant_id: r.id,
+        party_size: partySize,
+        time_window_start: timeWindowStart,
+        time_window_end: timeWindowEnd,
+        target_days: null, // Any day of week
+        enabled: true,
+      });
+    }
+  }
 
-  // Upsert to handle existing subscriptions
+  console.log(`\nCreating ${subscriptions.length} subscriptions for users ${userIds.join(", ")}...`);
+
   const { error: insertError } = await supabase
     .from("user_subscriptions")
-    .upsert(subscriptions, {
-      onConflict: "user_id,restaurant_id,party_size",
-      ignoreDuplicates: false,
-    });
+    .insert(subscriptions);
 
   if (insertError) {
     console.error("Failed to insert subscriptions:", insertError.message);
@@ -71,13 +93,13 @@ async function seedSubscriptions() {
   }
 
   console.log("\nSubscriptions created successfully!");
-  console.log(`  User ID: ${userId}`);
+  console.log(`  User IDs: ${userIds.join(", ")}`);
   console.log(`  Party size: ${partySize}`);
-  console.log(`  Time window: ${timeWindowStart} - ${timeWindowEnd} EST`);
-  console.log(`  Target days: Fri, Sat, Sun`);
+  console.log(`  Time window: ${timeWindowStart} - ${timeWindowEnd}`);
+  console.log(`  Target days: Any`);
   console.log(`  Restaurants: ${restaurants.length}`);
+  console.log(`  Total subscriptions: ${subscriptions.length}`);
 
-  // List all subscriptions
   console.log("\nRestaurants subscribed:");
   for (const r of restaurants) {
     console.log(`  - ${r.name}`);

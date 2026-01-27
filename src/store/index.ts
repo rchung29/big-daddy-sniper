@@ -583,12 +583,17 @@ class Store {
     return this.proxies.get(id);
   }
 
-  getAvailableProxies(): Proxy[] {
+  /**
+   * Get available proxies filtered by type
+   * @param type - 'datacenter' | 'isp' | undefined (all types)
+   */
+  getAvailableProxies(type?: "datacenter" | "isp"): Proxy[] {
     const now = new Date();
     return this.getAllProxies()
       .filter((p) => {
         if (!p.enabled) return false;
         if (p.rate_limited_until && new Date(p.rate_limited_until) > now) return false;
+        if (type && p.type !== type) return false;
         return true;
       })
       .sort((a, b) => {
@@ -597,6 +602,20 @@ class Store {
         const bTime = b.last_used_at ? new Date(b.last_used_at).getTime() : 0;
         return aTime - bTime;
       });
+  }
+
+  /**
+   * Get available datacenter proxies (for scanning)
+   */
+  getDatacenterProxies(): Proxy[] {
+    return this.getAvailableProxies("datacenter");
+  }
+
+  /**
+   * Get available ISP proxies (for booking)
+   */
+  getIspProxies(): Proxy[] {
+    return this.getAvailableProxies("isp");
   }
 
   markProxyUsed(proxyId: number): void {

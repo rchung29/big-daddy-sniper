@@ -26,6 +26,8 @@ import type {
 } from "./schemas";
 import { parseWithUnknownFieldDetection } from "./utils/schema-utils";
 import { ResyAPIError } from "./errors";
+import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
 const RESY_API_BASE = "https://api.resy.com";
 const RESY_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5";
@@ -38,36 +40,49 @@ export interface ResyClientConfig {
 }
 
 /**
- * Type-safe Resy API client
+ * Type-safe Resy API client using Axios
  */
 export class ResyClient {
     private authToken?: string;
     private apiKey: string;
     private debug: boolean;
     private proxyUrl?: string;
+    private axiosInstance: AxiosInstance;
 
     constructor(config: ResyClientConfig = {}) {
         this.authToken = config.authToken;
         this.apiKey = config.apiKey ?? RESY_API_KEY;
         this.debug = config.debug ?? false;
         this.proxyUrl = config.proxyUrl;
+        this.axiosInstance = this.createAxiosInstance();
     }
 
     /**
-     * Set proxy URL (can be updated after construction)
+     * Create axios instance with proxy if configured
+     */
+    private createAxiosInstance(): AxiosInstance {
+        const config: AxiosRequestConfig = {
+            baseURL: RESY_API_BASE,
+            timeout: 30000,
+            // Don't throw on non-2xx status codes - we handle them manually
+            validateStatus: () => true,
+        };
+
+        if (this.proxyUrl) {
+            const agent = new HttpsProxyAgent(this.proxyUrl);
+            config.httpsAgent = agent;
+            config.httpAgent = agent;
+        }
+
+        return axios.create(config);
+    }
+
+    /**
+     * Set proxy URL (recreates axios instance)
      */
     setProxyUrl(url: string | undefined): void {
         this.proxyUrl = url;
-    }
-
-    /**
-     * Get fetch options with proxy if configured (Bun native proxy support)
-     */
-    private getFetchOptions(options: RequestInit): RequestInit {
-        if (this.proxyUrl) {
-            return { ...options, proxy: this.proxyUrl } as RequestInit;
-        }
-        return options;
+        this.axiosInstance = this.createAxiosInstance();
     }
 
     /**
@@ -80,54 +95,41 @@ export class ResyClient {
     /**
      * Build headers for requests
      */
-    private getHeaders(includeAuth = false): Headers {
-        const headers = new Headers({
-            Accept: "application/json, text/plain, */*",
+    private getHeaders(includeAuth = false): Record<string, string> {
+        const headers: Record<string, string> = {
+            "Accept": "application/json, text/plain, */*",
             "Content-Type": "application/x-www-form-urlencoded",
-            Authorization: `ResyAPI api_key="${this.apiKey}"`,
-            "User-Agent":
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-        });
+            "Authorization": `ResyAPI api_key="${this.apiKey}"`,
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        };
 
         if (includeAuth && this.authToken) {
-            headers.set("X-Resy-Auth-Token", this.authToken);
-            headers.set("X-Resy-Universal-Auth", this.authToken);
+            headers["X-Resy-Auth-Token"] = this.authToken;
+            headers["X-Resy-Universal-Auth"] = this.authToken;
         }
 
         return headers;
     }
 
-
-
-    // ... previous imports ...
-
     /**
      * Helper to handle API responses and throw typed errors
      */
-    private async handleResponse(response: Response, errorMessage: string): Promise<any> {
-        if (!response.ok) {
-            // Read body as text first (can only read once)
-            const rawBody = await response.text();
-
-            // Try to parse as JSON for code extraction
-            let parsed: any = null;
-            try {
-                parsed = rawBody ? JSON.parse(rawBody) : null;
-            } catch {
-                // Not JSON, that's fine
-            }
+    private handleResponse<T>(status: number, data: any, errorMessage: string): T {
+        if (status < 200 || status >= 300) {
+            // Convert data to string for raw body logging
+            const rawBody = typeof data === "string" ? data : JSON.stringify(data);
 
             // Extract code if present
-            const apiCode = parsed?.code;
+            const apiCode = typeof data === "object" && data !== null ? data.code : undefined;
 
             throw new ResyAPIError(
-                `${errorMessage}: ${response.status}`,
-                response.status,
+                `${errorMessage}: ${status}`,
+                status,
                 apiCode,
-                rawBody  // Pass full raw body for logging
+                rawBody
             );
         }
-        return response.json();
+        return data as T;
     }
 
     // ============ Booking Flow Endpoints ============
@@ -137,18 +139,17 @@ export class ResyClient {
      * GET /4/venue/calendar
      */
     async getCalendar(params: CalendarParams): Promise<CalendarResponse> {
-        const url = new URL(`${RESY_API_BASE}/4/venue/calendar`);
-        url.searchParams.set("venue_id", String(params.venue_id));
-        url.searchParams.set("num_seats", String(params.num_seats));
-        url.searchParams.set("start_date", params.start_date);
-        url.searchParams.set("end_date", params.end_date);
-
-        const response = await fetch(url.toString(), this.getFetchOptions({
-            method: "GET",
+        const response = await this.axiosInstance.get("/4/venue/calendar", {
             headers: this.getHeaders(true),
-        }));
+            params: {
+                venue_id: params.venue_id,
+                num_seats: params.num_seats,
+                start_date: params.start_date,
+                end_date: params.end_date,
+            },
+        });
 
-        const data = await this.handleResponse(response, "Calendar request failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Calendar request failed");
 
         return this.debug
             ? parseWithUnknownFieldDetection(CalendarResponseSchema, data, "getCalendar")
@@ -160,19 +161,18 @@ export class ResyClient {
      * GET /4/find
      */
     async findSlots(params: FindParams): Promise<FindResponse> {
-        const url = new URL(`${RESY_API_BASE}/4/find`);
-        url.searchParams.set("venue_id", String(params.venue_id));
-        url.searchParams.set("day", params.day);
-        url.searchParams.set("party_size", String(params.party_size));
-        url.searchParams.set("lat", String(params.lat ?? 0));
-        url.searchParams.set("long", String(params.long ?? 0));
-
-        const response = await fetch(url.toString(), this.getFetchOptions({
-            method: "GET",
+        const response = await this.axiosInstance.get("/4/find", {
             headers: this.getHeaders(true),
-        }));
+            params: {
+                venue_id: params.venue_id,
+                day: params.day,
+                party_size: params.party_size,
+                lat: params.lat ?? 0,
+                long: params.long ?? 0,
+            },
+        });
 
-        const data = await this.handleResponse(response, "Find request failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Find request failed");
 
         return this.debug
             ? parseWithUnknownFieldDetection(FindResponseSchema.passthrough(), data, "findSlots")
@@ -182,7 +182,7 @@ export class ResyClient {
     /**
      * Step 3: Get details and book_token for a specific slot
      * GET /3/details
-     * 
+     *
      * NOTE: This uses the CAPTCHA-bypass method by passing auth token as query param
      */
     async getDetails(params: DetailsParams): Promise<DetailsResponse> {
@@ -190,20 +190,19 @@ export class ResyClient {
             throw new Error("Auth token required for getDetails");
         }
 
-        const url = new URL(`${RESY_API_BASE}/3/details`);
-        url.searchParams.set("day", params.day);
-        url.searchParams.set("party_size", String(params.party_size));
-        url.searchParams.set("venue_id", String(params.venue_id));
-        url.searchParams.set("config_id", params.config_id);
-        // CAPTCHA bypass: pass auth token as query param
-        url.searchParams.set("x-resy-auth-token", this.authToken);
-
-        const response = await fetch(url.toString(), this.getFetchOptions({
-            method: "GET",
+        const response = await this.axiosInstance.get("/3/details", {
             headers: this.getHeaders(false), // No auth headers needed when using query param
-        }));
+            params: {
+                day: params.day,
+                party_size: params.party_size,
+                venue_id: params.venue_id,
+                config_id: params.config_id,
+                // CAPTCHA bypass: pass auth token as query param
+                "x-resy-auth-token": this.authToken,
+            },
+        });
 
-        const data = await this.handleResponse(response, "Details request failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Details request failed");
 
         return this.debug
             ? parseWithUnknownFieldDetection(DetailsResponseSchema.passthrough(), data, "getDetails")
@@ -215,17 +214,17 @@ export class ResyClient {
      * POST /3/book
      */
     async bookReservation(params: BookParams): Promise<BookResponse> {
-        const response = await fetch(`${RESY_API_BASE}/3/book`, this.getFetchOptions({
-            method: "POST",
-            headers: this.getHeaders(true),
-            body: new URLSearchParams({
-                book_token: params.book_token,
-                struct_payment_method: JSON.stringify({ id: params.payment_method_id }),
-                source_id: params.source_id ?? "resy.com-venue-details",
-            }),
-        }));
+        const body = new URLSearchParams({
+            book_token: params.book_token,
+            struct_payment_method: JSON.stringify({ id: params.payment_method_id }),
+            source_id: params.source_id ?? "resy.com-venue-details",
+        });
 
-        const data = await this.handleResponse(response, "Book request failed");
+        const response = await this.axiosInstance.post("/3/book", body.toString(), {
+            headers: this.getHeaders(true),
+        });
+
+        const data = this.handleResponse<any>(response.status, response.data, "Book request failed");
 
         // Handle both response formats
         const extended = BookResponseExtendedSchema.parse(data);
@@ -246,15 +245,12 @@ export class ResyClient {
      * GET /3/user/reservations
      */
     async getUserReservations(type: "upcoming" | "past" = "upcoming"): Promise<UserReservationsResponse> {
-        const url = new URL(`${RESY_API_BASE}/3/user/reservations`);
-        url.searchParams.set("type", type);
-
-        const response = await fetch(url.toString(), this.getFetchOptions({
-            method: "GET",
+        const response = await this.axiosInstance.get("/3/user/reservations", {
             headers: this.getHeaders(true),
-        }));
+            params: { type },
+        });
 
-        const data = await this.handleResponse(response, "Reservations request failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Reservations request failed");
 
         return this.debug
             ? parseWithUnknownFieldDetection(UserReservationsResponseSchema.passthrough(), data, "getUserReservations")
@@ -266,21 +262,21 @@ export class ResyClient {
      * POST /3/cancel
      */
     async cancelReservation(params: CancelParams): Promise<void> {
-        const response = await fetch(`${RESY_API_BASE}/3/cancel`, this.getFetchOptions({
-            method: "POST",
-            headers: this.getHeaders(true),
-            body: new URLSearchParams({
-                resy_token: params.resy_token,
-            }),
-        }));
+        const body = new URLSearchParams({
+            resy_token: params.resy_token,
+        });
 
-        await this.handleResponse(response, "Cancel request failed");
+        const response = await this.axiosInstance.post("/3/cancel", body.toString(), {
+            headers: this.getHeaders(true),
+        });
+
+        this.handleResponse<any>(response.status, response.data, "Cancel request failed");
     }
 
     /**
      * Register a new user account
      * POST /2/user/registration
-     * 
+     *
      * NOTE: Requires CAPTCHA token
      */
     async registerUser(params: RegistrationParams): Promise<UserRegistrationResponse> {
@@ -299,13 +295,11 @@ export class ResyClient {
             isNonUS: String(params.isNonUS ?? 0),
         });
 
-        const response = await fetch(`${RESY_API_BASE}/2/user/registration`, this.getFetchOptions({
-            method: "POST",
+        const response = await this.axiosInstance.post("/2/user/registration", body.toString(), {
             headers: this.getHeaders(false),
-            body,
-        }));
+        });
 
-        const data = await this.handleResponse(response, "Registration failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Registration failed");
 
         return this.debug
             ? parseWithUnknownFieldDetection(UserRegistrationResponseSchema.passthrough(), data, "registerUser")
@@ -319,12 +313,11 @@ export class ResyClient {
      * POST /3/stripe/setup_intent
      */
     async createStripeSetupIntent(): Promise<StripeSetupIntentResponse> {
-        const response = await fetch(`${RESY_API_BASE}/3/stripe/setup_intent`, this.getFetchOptions({
-            method: "POST",
+        const response = await this.axiosInstance.post("/3/stripe/setup_intent", null, {
             headers: this.getHeaders(true),
-        }));
+        });
 
-        const data = await this.handleResponse(response, "Setup intent failed");
+        const data = this.handleResponse<any>(response.status, response.data, "Setup intent failed");
         return StripeSetupIntentResponseSchema.parse(data);
     }
 
@@ -333,14 +326,14 @@ export class ResyClient {
      * POST /3/stripe/payment_method
      */
     async savePaymentMethod(params: StripePaymentMethodParams): Promise<void> {
-        const response = await fetch(`${RESY_API_BASE}/3/stripe/payment_method`, this.getFetchOptions({
-            method: "POST",
-            headers: this.getHeaders(true),
-            body: new URLSearchParams({
-                stripe_payment_method_id: params.stripe_payment_method_id,
-            }),
-        }));
+        const body = new URLSearchParams({
+            stripe_payment_method_id: params.stripe_payment_method_id,
+        });
 
-        await this.handleResponse(response, "Save payment method failed");
+        const response = await this.axiosInstance.post("/3/stripe/payment_method", body.toString(), {
+            headers: this.getHeaders(true),
+        });
+
+        this.handleResponse<any>(response.status, response.data, "Save payment method failed");
     }
 }

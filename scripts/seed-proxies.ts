@@ -1,5 +1,7 @@
 /**
- * Seed Oxylabs proxies into the database
+ * Seed Bright Data proxies into the database
+ *
+ * Appends new proxies (skips duplicates).
  *
  * Run with: bun scripts/seed-proxies.ts
  */
@@ -13,23 +15,29 @@ const logger = pino({
   },
 });
 
-// Oxylabs credentials
-const USERNAME = "testing_ArnUq";
-const PASSWORD = "FNZx8nW5+cfPJ9";
-const COUNTRY = "US";
-
-// Datacenter proxy endpoints
-const PROXIES = [
-  { host: "dc.oxylabs.io", port: 8001, ip: "93.115.200.159" },
-  { host: "dc.oxylabs.io", port: 8002, ip: "93.115.200.158" },
-  { host: "dc.oxylabs.io", port: 8003, ip: "93.115.200.157" },
-  { host: "dc.oxylabs.io", port: 8004, ip: "93.115.200.156" },
-  { host: "dc.oxylabs.io", port: 8005, ip: "93.115.200.155" },
+// Bright Data proxy format: host:port:username:password
+const PROXY_STRINGS = [
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-180.149.13.171:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-185.246.174.193:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.90.180:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-119.13.216.205:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.74.238:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-206.204.6.49:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-161.123.110.32:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-152.39.211.26:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-204.44.98.190:4qg8exdwbnz4",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-datacenter_proxy1-ip-213.188.67.188:4qg8exdwbnz4",
 ];
 
-function buildProxyUrl(host: string, port: number): string {
-  const username = `user-${USERNAME}-country-${COUNTRY}`;
-  const encodedPassword = encodeURIComponent(PASSWORD);
+function parseProxyString(proxyStr: string): string {
+  // Format: host:port:username:password
+  const parts = proxyStr.split(":");
+  const host = parts[0];
+  const port = parts[1];
+  const username = parts[2];
+  const password = parts[3];
+
+  const encodedPassword = encodeURIComponent(password);
   return `http://${username}:${encodedPassword}@${host}:${port}`;
 }
 
@@ -46,52 +54,56 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  logger.info({ count: PROXIES.length }, "Seeding Oxylabs proxies...");
+  logger.info({ count: PROXY_STRINGS.length }, "Seeding Bright Data proxies...");
 
+  const proxies = PROXY_STRINGS.map((str) => ({
+    url: parseProxyString(str),
+    type: "datacenter" as const,
+    enabled: true,
+  }));
+
+  // Insert each proxy, skip if already exists
   let created = 0;
-  let updated = 0;
+  let skipped = 0;
 
-  for (const proxy of PROXIES) {
-    const proxyUrl = buildProxyUrl(proxy.host, proxy.port);
+  for (const proxy of proxies) {
+    // Check if already exists
+    const { data: existing } = await supabase
+      .from("proxies")
+      .select("id")
+      .eq("url", proxy.url)
+      .single();
 
-    try {
-      const { data: existing } = await supabase
-        .from("proxies")
-        .select("id")
-        .eq("url", proxyUrl)
-        .single();
+    if (existing) {
+      skipped++;
+      continue;
+    }
 
-      if (existing) {
-        await supabase
-          .from("proxies")
-          .update({ enabled: true, rate_limited_until: null })
-          .eq("id", existing.id);
-        updated++;
-        logger.debug({ port: proxy.port, ip: proxy.ip }, "Updated proxy");
-      } else {
-        const { error } = await supabase.from("proxies").insert({
-          url: proxyUrl,
-          type: "datacenter",
-          enabled: true,
-        });
-        if (error) throw error;
-        created++;
-        logger.debug({ port: proxy.port, ip: proxy.ip }, "Created proxy");
-      }
-    } catch (error) {
-      logger.error({ port: proxy.port, error: String(error) }, "Failed");
+    const { error } = await supabase.from("proxies").insert(proxy);
+    if (error) {
+      logger.error({ error: error.message }, "Failed to insert proxy");
+    } else {
+      created++;
     }
   }
 
-  logger.info({ created, updated }, "Proxy seeding complete");
+  logger.info({ created, skipped }, "Proxy seeding complete");
 
   // Verify
-  const { count } = await supabase
+  const { data: inserted } = await supabase
     .from("proxies")
-    .select("*", { count: "exact", head: true })
+    .select("id, url, enabled")
     .eq("enabled", true);
 
-  logger.info(`Total enabled proxies: ${count}`);
+  logger.info(`Total enabled proxies: ${inserted?.length ?? 0}`);
+
+  console.log("\nProxies added:");
+  for (const p of inserted ?? []) {
+    // Extract IP from URL for display
+    const ipMatch = p.url.match(/ip-([0-9.]+)/);
+    const ip = ipMatch ? ipMatch[1] : "unknown";
+    console.log(`  [${p.id}] ${ip}`);
+  }
 }
 
 main().catch((error) => {

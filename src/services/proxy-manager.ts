@@ -26,13 +26,15 @@ export class ProxyManager {
   private userProxyAssignments = new Map<number, Proxy>();
 
   /**
-   * Get the next proxy for rotating scan requests
-   * Uses round-robin across available proxies
+   * Get the next datacenter proxy for rotating scan requests
+   * Uses round-robin across available datacenter proxies only
+   * ISP proxies are reserved for booking (details + book endpoints)
    */
   getRotatingProxy(): Proxy | null {
-    const proxies = store.getAvailableProxies();
+    // Only use datacenter proxies for scanning
+    const proxies = store.getDatacenterProxies();
     if (proxies.length === 0) {
-      logger.warn("No available proxies for rotation");
+      logger.warn("No available datacenter proxies for rotation");
       return null;
     }
 
@@ -45,8 +47,8 @@ export class ProxyManager {
     store.markProxyUsed(proxy.id);
 
     logger.debug(
-      { proxyId: proxy.id, index: this.rotationIndex - 1, total: proxies.length },
-      "Selected rotating proxy"
+      { proxyId: proxy.id, type: "datacenter", index: this.rotationIndex - 1, total: proxies.length },
+      "Selected rotating datacenter proxy for scanning"
     );
 
     return proxy;

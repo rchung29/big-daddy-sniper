@@ -26,7 +26,7 @@ const logger = pino({
 });
 
 // Default configuration
-const DEFAULT_SCAN_INTERVAL_MS = 1000; // 1 second
+const DEFAULT_SCAN_INTERVAL_MS = 2000; // 2 seconds between scans to avoid proxy bans
 const DEFAULT_SCAN_TIMEOUT_SECONDS = 120; // 2 minutes after release
 
 /**
