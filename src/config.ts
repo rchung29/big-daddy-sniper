@@ -56,6 +56,13 @@ export const AppConfigSchema = z.object({
     .optional()
     .transform((val) => val?.toLowerCase() === "true")
     .describe("Enable proxy rotation (adds ~600ms latency)"),
+
+  // Dashboard settings
+  DASHBOARD_ENABLED: z
+    .string()
+    .optional()
+    .transform((val) => val?.toLowerCase() !== "false")
+    .describe("Enable CLI dashboard (default: true if TTY)"),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

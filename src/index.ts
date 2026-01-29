@@ -20,6 +20,7 @@ import { getBookingCoordinator } from "./services/booking-coordinator";
 import { getAccountReservationChecker } from "./services/account-reservation-checker";
 import { getProxyManager } from "./services/proxy-manager";
 import { checkResyIPOrExit } from "./services/ip-check";
+import { createDashboard } from "./dashboard";
 import pino from "pino";
 
 const logger = pino({
@@ -57,6 +58,10 @@ async function main(): Promise<void> {
     "In-memory store initialized from Supabase"
   );
 
+  // Initialize dashboard (before other services to capture early events)
+  const dashboard = createDashboard({ enabled: config.DASHBOARD_ENABLED });
+  const eventBridge = dashboard.getEventBridge();
+
   // Initialize Discord bot
   const discordBot = getDiscordBot({
     token: config.DISCORD_BOT_TOKEN,
@@ -69,34 +74,36 @@ async function main(): Promise<void> {
   initializeNotifier(config.DISCORD_WEBHOOK_URL);
 
   // Initialize booking coordinator (push-based architecture)
+  // Wrap callbacks with event bridge for dashboard logging
   const coordinator = getBookingCoordinator({
     apiKey: config.RESY_API_KEY,
     dryRun: config.DRY_RUN,
-    onBookingSuccess: async (result) => {
+    onBookingSuccess: eventBridge.wrapSuccess(async (result) => {
       const notifier = getNotifier();
       if (notifier) {
         await notifier.notifyBookingSuccess(result);
       }
-    },
-    onBookingFailed: async (result) => {
+    }),
+    onBookingFailed: eventBridge.wrapFailed(async (result) => {
       const notifier = getNotifier();
       if (notifier) {
         await notifier.notifyBookingFailed(result);
       }
-    },
+    }),
   });
 
   // Initialize coordinator (sets up ISP proxy pool)
   coordinator.initialize();
 
   // Initialize scanner with push-based callbacks
+  // Wrap callbacks with event bridge for dashboard logging
   const scanner = getScanner({
     scanIntervalMs: config.SCAN_INTERVAL_MS,
     scanTimeoutSeconds: config.SCAN_TIMEOUT_SECONDS,
     apiKey: config.RESY_API_KEY,
 
     // Push model: slots are emitted immediately to coordinator
-    onSlotsDiscovered: (slots, restaurant) => {
+    onSlotsDiscovered: eventBridge.wrapSlotsDiscovered((slots, restaurant) => {
       logger.info(
         {
           restaurant: restaurant.name,
@@ -105,10 +112,10 @@ async function main(): Promise<void> {
         "Slots discovered - forwarding to coordinator"
       );
       coordinator.onSlotsDiscovered(slots, restaurant);
-    },
+    }),
 
     // Called when scan window completes
-    onScanComplete: async (window: ReleaseWindow, stats: ScanStats) => {
+    onScanComplete: eventBridge.wrapScanComplete(async (window: ReleaseWindow, stats: ScanStats) => {
       logger.info(
         {
           releaseTime: window.releaseTime,
@@ -139,7 +146,7 @@ async function main(): Promise<void> {
 
         await notifier.notifyAdmin("Scan Complete", summary);
       }
-    },
+    }),
   });
 
   // Initialize account reservation checker (uses datacenter proxies)
@@ -147,9 +154,10 @@ async function main(): Promise<void> {
   const reservationChecker = getAccountReservationChecker(proxyManager);
 
   // Initialize scheduler
+  // Wrap onWindowStart with event bridge for dashboard logging
   const scheduler = getScheduler({
     scanStartSecondsBefore: config.SCAN_START_SECONDS_BEFORE,
-    onWindowStart: async (window: ReleaseWindow) => {
+    onWindowStart: eventBridge.wrapWindowStart(async (window: ReleaseWindow) => {
       logger.info(
         {
           releaseTime: window.releaseTime,
@@ -208,10 +216,13 @@ async function main(): Promise<void> {
 
       // Start scanning - runs in background, emits slots via callback
       scanner.startScan(window);
-    },
+    }),
   });
 
   scheduler.start();
+
+  // Start dashboard (if enabled)
+  dashboard.start();
 
   logger.info(
     {
@@ -220,6 +231,7 @@ async function main(): Promise<void> {
       scanTimeout: config.SCAN_TIMEOUT_SECONDS,
       scanStartBefore: config.SCAN_START_SECONDS_BEFORE,
       architecture: "push-based",
+      dashboardEnabled: dashboard.isEnabled(),
     },
     "Big Daddy Sniper started successfully"
   );
@@ -227,6 +239,7 @@ async function main(): Promise<void> {
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Received shutdown signal");
+    dashboard.stop();
     scheduler.stop();
     scanner.stopAllScans();
     store.stopPeriodicSync();
