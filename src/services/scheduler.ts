@@ -12,6 +12,8 @@ import { logger } from "../logger";
 
 // Default: start scanning 45 seconds before release
 const DEFAULT_SCAN_START_SECONDS_BEFORE = 45;
+// Default: start prefetch 15 minutes before release
+const DEFAULT_PREFETCH_START_SECONDS_BEFORE = 15 * 60;
 
 /**
  * Represents a scheduled release window
@@ -186,19 +188,27 @@ export function calculateReleaseWindows(
  */
 export class Scheduler {
   private timers = new Map<string, Timer>();
+  private prefetchTimers = new Map<string, Timer>();
   private scanStartSecondsBefore: number;
+  private prefetchStartSecondsBefore: number;
   private onWindowStart?: (window: ReleaseWindow) => void;
+  private onPrefetchStart?: (window: ReleaseWindow) => void;
   private running = false;
 
   constructor(
     config: {
       scanStartSecondsBefore?: number;
+      prefetchStartSecondsBefore?: number;
       onWindowStart?: (window: ReleaseWindow) => void;
+      onPrefetchStart?: (window: ReleaseWindow) => void;
     } = {}
   ) {
     this.scanStartSecondsBefore =
       config.scanStartSecondsBefore ?? DEFAULT_SCAN_START_SECONDS_BEFORE;
+    this.prefetchStartSecondsBefore =
+      config.prefetchStartSecondsBefore ?? DEFAULT_PREFETCH_START_SECONDS_BEFORE;
     this.onWindowStart = config.onWindowStart;
+    this.onPrefetchStart = config.onPrefetchStart;
   }
 
   /**
@@ -241,6 +251,10 @@ export class Scheduler {
       clearTimeout(timer);
       this.timers.delete(key);
     }
+    for (const [key, timer] of this.prefetchTimers) {
+      clearTimeout(timer);
+      this.prefetchTimers.delete(key);
+    }
     logger.info("Scheduler stopped");
   }
 
@@ -267,6 +281,30 @@ export class Scheduler {
     for (const window of windows) {
       const key = `${window.releaseTime}-${window.targetDate}`;
       const msUntilScan = window.scanStartDateTime.getTime() - now;
+      const msUntilPrefetch = window.releaseDateTime.getTime() - (this.prefetchStartSecondsBefore * 1000) - now;
+
+      // Schedule prefetch (15 min before release by default)
+      if (this.onPrefetchStart && msUntilPrefetch > 0 && msUntilPrefetch < 24 * 60 * 60 * 1000) {
+        const prefetchKey = `prefetch-${key}`;
+        if (!this.prefetchTimers.has(prefetchKey)) {
+          const prefetchTimer = setTimeout(() => {
+            this.handlePrefetchStart(window);
+            this.prefetchTimers.delete(prefetchKey);
+          }, msUntilPrefetch);
+
+          this.prefetchTimers.set(prefetchKey, prefetchTimer);
+
+          const minutesUntilPrefetch = Math.round(msUntilPrefetch / 60000);
+          logger.info(
+            {
+              releaseTime: window.releaseTime,
+              targetDate: window.targetDate,
+              prefetchStartsIn: `${minutesUntilPrefetch} minutes`,
+            },
+            "Scheduled prefetch"
+          );
+        }
+      }
 
       // Only schedule if scan start is in the future and within 24 hours
       if (msUntilScan > 0 && msUntilScan < 24 * 60 * 60 * 1000) {
@@ -292,6 +330,24 @@ export class Scheduler {
           "Scheduled release window"
         );
       }
+    }
+  }
+
+  /**
+   * Handle prefetch start (15 min before release by default)
+   */
+  private handlePrefetchStart(window: ReleaseWindow): void {
+    logger.info(
+      {
+        releaseTime: window.releaseTime,
+        targetDate: window.targetDate,
+        subscriptions: window.subscriptions.length,
+      },
+      "Starting prefetch for upcoming window"
+    );
+
+    if (this.onPrefetchStart) {
+      this.onPrefetchStart(window);
     }
   }
 
@@ -359,7 +415,9 @@ let scheduler: Scheduler | null = null;
 export function getScheduler(
   config?: {
     scanStartSecondsBefore?: number;
+    prefetchStartSecondsBefore?: number;
     onWindowStart?: (window: ReleaseWindow) => void;
+    onPrefetchStart?: (window: ReleaseWindow) => void;
   }
 ): Scheduler {
   if (!scheduler) {

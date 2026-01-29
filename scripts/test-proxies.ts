@@ -1,10 +1,15 @@
 /**
  * Test all proxies against Resy API (in parallel)
  *
- * Makes a legitimate find request to venue 834 using the SDK client.
+ * Makes a legitimate find request using the SDK client.
  * Expected: 200 = WORKING, error = BLOCKED by WAF
  *
- * Run with: bun scripts/test-proxies.ts
+ * Usage:
+ *   bun scripts/test-proxies.ts                    # Test Default venue
+ *   bun scripts/test-proxies.ts "i Sodi"           # Test i Sodi only
+ *   bun scripts/test-proxies.ts "i Sodi,Thai Diner" # Test multiple venues
+ *
+ * Available venues: i Sodi, Thai Diner, Carbone, Default
  */
 import { createClient } from "@supabase/supabase-js";
 import { ResyClient, ResyAPIError } from "../src/sdk";
@@ -19,12 +24,34 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Legitimate find request to venue 79460
+// Venue IDs - competitive venues for testing
+const VENUES: Record<string, number> = {
+  "i Sodi": 443,
+  "Thai Diner": 57905,
+  "Carbone": 6194,
+  "Default": 1263,
+};
+
+// Parse venue argument
+const venueArg = process.argv[2];
+const selectedVenues = venueArg
+  ? venueArg.split(",").map((v) => v.trim())
+  : ["Default"];
+
+// Validate venues
+for (const v of selectedVenues) {
+  if (!VENUES[v]) {
+    console.error(`Unknown venue: ${v}`);
+    console.error(`Available: ${Object.keys(VENUES).join(", ")}`);
+    process.exit(1);
+  }
+}
+
 const tomorrow = new Date();
 tomorrow.setDate(tomorrow.getDate() + 1);
 const day = tomorrow.toISOString().split("T")[0];
 
-async function testProxy(proxyId: number, proxyUrl: string): Promise<{
+async function testProxy(proxyId: number, proxyUrl: string, venueId: number = VENUES["Default"]): Promise<{
   id: number;
   ip: string;
   status: number;
@@ -42,7 +69,7 @@ async function testProxy(proxyId: number, proxyUrl: string): Promise<{
   try {
     const client = new ResyClient({ proxyUrl });
     const result = await client.findSlots({
-      venue_id: 1263,
+      venue_id: venueId,
       day,
       party_size: 2,
     });
@@ -112,41 +139,87 @@ async function main() {
   const ispCount = proxies.filter(p => p.type === "isp").length;
   console.log(`Found ${proxies.length} proxies (${dcCount} datacenter, ${ispCount} ISP)\n`);
 
-  console.log(`Testing ${proxies.length} proxies against Resy API (venue 834) IN PARALLEL...\n`);
+  console.log(`Testing ${proxies.length} proxies against: ${selectedVenues.join(", ")}\n`);
   console.log("Expected: 200 = WORKING, 500 empty = BLOCKED (WAF)\n");
 
-  // Run all tests in parallel
-  const startTime = Date.now();
-  const results = await Promise.all(
-    proxies.map((proxy) => testProxy(proxy.id, proxy.url))
-  );
-  const totalTime = Date.now() - startTime;
+  // Test each venue
+  const allResults: Record<string, typeof results> = {};
 
-  // Sort by ID for consistent output
-  results.sort((a, b) => a.id - b.id);
+  for (const venueName of selectedVenues) {
+    const venueId = VENUES[venueName];
+    console.log(`\n${"=".repeat(50)}`);
+    console.log(`Testing ${venueName} (venue_id: ${venueId})`);
+    console.log("=".repeat(50) + "\n");
 
-  // Log results
-  for (const result of results) {
-    logData.push({
-      id: result.id,
-      ip: result.ip,
-      status: result.status,
-      latencyMs: result.latencyMs,
-      blocked: result.blocked,
-      error: result.error,
-      rawBody: result.body,
-    });
+    // Run all tests in parallel for this venue
+    const startTime = Date.now();
+    const results = await Promise.all(
+      proxies.map((proxy) => testProxy(proxy.id, proxy.url, venueId))
+    );
+    const totalTime = Date.now() - startTime;
 
-    if (result.error) {
-      console.log(`[${result.id}] ${result.ip} ... ERROR: ${result.error}`);
-    } else if (result.blocked) {
-      console.log(`[${result.id}] ${result.ip} ... BLOCKED (${result.status}) - ${result.latencyMs}ms`);
-    } else {
-      console.log(`[${result.id}] ${result.ip} ... OK (${result.status}) - ${result.latencyMs}ms`);
+    // Sort by ID for consistent output
+    results.sort((a, b) => a.id - b.id);
+    allResults[venueName] = results;
+
+    // Log results
+    for (const result of results) {
+      logData.push({
+        venue: venueName,
+        id: result.id,
+        ip: result.ip,
+        status: result.status,
+        latencyMs: result.latencyMs,
+        blocked: result.blocked,
+        error: result.error,
+        rawBody: result.body,
+      });
+
+      if (result.error) {
+        console.log(`[${result.id}] ${result.ip} ... ERROR: ${result.error}`);
+      } else if (result.blocked) {
+        console.log(`[${result.id}] ${result.ip} ... BLOCKED (${result.status}) - ${result.latencyMs}ms`);
+      } else {
+        console.log(`[${result.id}] ${result.ip} ... OK (${result.status}) - ${result.latencyMs}ms`);
+      }
+    }
+
+    console.log(`\n${venueName}: ${proxies.length} proxies tested in ${totalTime}ms`);
+
+    // Venue summary
+    const working = results.filter(r => !r.blocked);
+    const blocked = results.filter(r => r.blocked);
+    console.log(`  ✅ Working: ${working.length}  🚫 Blocked: ${blocked.length}`);
+
+    // Delay between venues to avoid hammering
+    if (selectedVenues.indexOf(venueName) < selectedVenues.length - 1) {
+      console.log("\nWaiting 2s before next venue...");
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
-  console.log(`\nAll ${proxies.length} proxies tested in ${totalTime}ms (parallel)`)
+  // If multiple venues, show comparison
+  if (selectedVenues.length > 1) {
+    console.log(`\n${"=".repeat(50)}`);
+    console.log("COMPARISON BY PROXY");
+    console.log("=".repeat(50) + "\n");
+
+    const header = "Proxy | " + selectedVenues.map(v => v.padEnd(12)).join(" | ");
+    console.log(header);
+    console.log("-".repeat(header.length));
+
+    for (const proxy of proxies) {
+      const cols = selectedVenues.map(venueName => {
+        const result = allResults[venueName].find(r => r.id === proxy.id);
+        if (!result) return "???".padEnd(12);
+        if (result.blocked) return "🚫 BLOCKED".padEnd(12);
+        return `✅ ${result.latencyMs}ms`.padEnd(12);
+      });
+      console.log(`#${proxy.id.toString().padStart(3)} | ${cols.join(" | ")}`);
+    }
+  }
+
+  const results = Object.values(allResults).flat();
 
   // Write log file
   await Bun.write(logFile, JSON.stringify(logData, null, 2));

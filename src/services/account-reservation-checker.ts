@@ -17,6 +17,10 @@ import { logger } from "../logger";
 
 // Concurrency limit for fetching reservations
 const FETCH_CONCURRENCY = 5;
+// Timeout for entire prefetch operation (30 seconds)
+const PREFETCH_TIMEOUT_MS = 30_000;
+// Timeout for individual user fetch (10 seconds)
+const USER_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Represents an existing reservation on an account
@@ -52,12 +56,29 @@ export class AccountReservationChecker {
 
   /**
    * Prefetch existing reservations for all unique users in a window
+   * Has a global timeout to prevent blocking scan window start
    *
    * @param subscriptions - All subscriptions in the booking window
    * @param targetDate - The date being booked (YYYY-MM-DD)
    * @returns AccountExclusions with reservation data
    */
   async prefetchReservations(
+    subscriptions: FullSubscription[],
+    targetDate: string
+  ): Promise<AccountExclusions> {
+    // Wrap entire operation with timeout
+    return Promise.race([
+      this.doPrefetch(subscriptions, targetDate),
+      new Promise<AccountExclusions>((_, reject) =>
+        setTimeout(() => reject(new Error(`Prefetch timeout after ${PREFETCH_TIMEOUT_MS}ms`)), PREFETCH_TIMEOUT_MS)
+      ),
+    ]);
+  }
+
+  /**
+   * Internal prefetch implementation
+   */
+  private async doPrefetch(
     subscriptions: FullSubscription[],
     targetDate: string
   ): Promise<AccountExclusions> {
@@ -87,7 +108,7 @@ export class AccountReservationChecker {
       const batchResults = await Promise.all(
         batch.map(async ([userId, sub]) => {
           try {
-            const reservations = await this.fetchUserReservations(sub);
+            const reservations = await this.fetchUserReservationsWithTimeout(sub);
             results.set(userId, reservations);
             successfulFetches++;
 
@@ -158,6 +179,20 @@ export class AccountReservationChecker {
     );
 
     return exclusions;
+  }
+
+  /**
+   * Fetch reservations for a single user with timeout
+   */
+  private async fetchUserReservationsWithTimeout(
+    sub: FullSubscription
+  ): Promise<ExistingReservation[]> {
+    return Promise.race([
+      this.fetchUserReservations(sub),
+      new Promise<ExistingReservation[]>((_, reject) =>
+        setTimeout(() => reject(new Error(`User fetch timeout after ${USER_FETCH_TIMEOUT_MS}ms`)), USER_FETCH_TIMEOUT_MS)
+      ),
+    ]);
   }
 
   /**

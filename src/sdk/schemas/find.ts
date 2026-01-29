@@ -84,17 +84,17 @@ export const TemplateTurnTimeSchema = z.object({
 // Venue content info
 export const VenueContentSchema = z.object({
     title: z.string().nullable().optional(),
-    body: z.string().optional(),
+    body: z.string().nullable().optional(),
     icon: z.object({
         url: z.string().optional(),
-    }).passthrough().optional(),
+    }).passthrough().nullable().optional(),
     display: z.object({
         type: z.string().optional(),
-    }).passthrough().optional(),
+    }).passthrough().nullable().optional(),
     locale: z.object({
         language: z.string().optional(),
-    }).passthrough().optional(),
-    name: z.string().optional(),
+    }).passthrough().nullable().optional(),
+    name: z.string().nullable().optional(),
     attribution: z.object({
         name: z.string().optional(),
         image: z.string().optional(),
@@ -114,7 +114,7 @@ export const FindTemplateSchema = z.object({
     is_event: z.number().optional(),
     is_pickup: z.number().optional(),
     venue_id: z.number().optional(),
-    reservation_config: z.object({ type: z.string() }).passthrough().optional(),
+    reservation_config: z.object({ type: z.string().nullable() }).passthrough().nullable().optional(),
     display_config: z.object({
         color: z.object({ background: z.string().nullable(), font: z.string().nullable() }).passthrough(),
     }).passthrough().optional(),
