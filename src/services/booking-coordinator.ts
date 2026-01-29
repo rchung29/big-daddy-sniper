@@ -125,6 +125,9 @@ export class BookingCoordinator {
   // Account exclusions (users with existing reservations on target date)
   private accountExclusions: AccountExclusions | null = null;
 
+  // Claimed slots: "restaurantId:targetDate:slotTime" → userId who claimed it
+  private claimedSlots = new Map<string, number>();
+
   constructor(config: BookingCoordinatorConfig = {}) {
     this.apiKey = config.apiKey ?? process.env.RESY_API_KEY ?? "";
     this.dryRun = config.dryRun ?? process.env.DRY_RUN === "true";
@@ -139,6 +142,36 @@ export class BookingCoordinator {
   initialize(): void {
     this.ispPool.initialize();
     logger.info("Booking coordinator initialized with ISP proxy pool");
+  }
+
+  /**
+   * Get a unique key for a slot
+   */
+  private getSlotKey(restaurantId: number, targetDate: string, slotTime: string): string {
+    return `${restaurantId}:${targetDate}:${slotTime}`;
+  }
+
+  /**
+   * Try to claim a slot for a user. Returns true if claimed, false if already claimed by another user.
+   */
+  private tryClaimSlot(restaurantId: number, targetDate: string, slotTime: string, userId: number): boolean {
+    const key = this.getSlotKey(restaurantId, targetDate, slotTime);
+    if (this.claimedSlots.has(key)) {
+      return false; // Already claimed by another user
+    }
+    this.claimedSlots.set(key, userId);
+    return true;
+  }
+
+  /**
+   * Release a slot claim (only if this user owns it)
+   */
+  private releaseSlot(restaurantId: number, targetDate: string, slotTime: string, userId: number): void {
+    const key = this.getSlotKey(restaurantId, targetDate, slotTime);
+    // Only release if this user owns the claim
+    if (this.claimedSlots.get(key) === userId) {
+      this.claimedSlots.delete(key);
+    }
   }
 
   /**
@@ -309,6 +342,21 @@ export class BookingCoordinator {
 
     while (slotIndex < queuedSlots.length) {
       const { slot: discoveredSlot, subscription } = queuedSlots[slotIndex];
+      const slotTime = discoveredSlot.slot.time;
+      const targetDate = discoveredSlot.targetDate;
+      const restaurantId = discoveredSlot.restaurant.id;
+
+      // Try to claim this slot before attempting booking
+      const claimed = this.tryClaimSlot(restaurantId, targetDate, slotTime, user.userId);
+
+      if (!claimed) {
+        logger.debug(
+          { userId: user.userId, slotTime, restaurant: discoveredSlot.restaurant.name },
+          "Slot already claimed by another user - skipping"
+        );
+        slotIndex++;
+        continue;
+      }
 
       // Acquire ISP proxy
       logger.debug(
@@ -382,6 +430,8 @@ export class BookingCoordinator {
                 { userId: user.userId, slotTime: discoveredSlot.slot.time, retryCount },
                 "Max WAF retries reached - moving to next slot"
               );
+              // Release slot claim so others can try
+              this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
               slotIndex++;
               retryCount = 0;
             } else {
@@ -389,11 +439,12 @@ export class BookingCoordinator {
                 { userId: user.userId, slotTime: discoveredSlot.slot.time, retryCount },
                 "WAF blocked - retrying with new proxy"
               );
+              // Keep slot claimed - this user is still retrying
             }
             break;
 
           case "sold_out":
-            // Slot taken - try next
+            // Slot taken - try next (keep slot claimed, no point others trying)
             this.ispPool.release(proxy.id);
             logger.info(
               { userId: user.userId, slotTime: discoveredSlot.slot.time },
@@ -405,31 +456,35 @@ export class BookingCoordinator {
             break;
 
           case "rate_limited":
-            // Rate limited - stop for this user
+            // Rate limited - stop for this user, release slot for others
             this.ispPool.markBad(proxy.id);
+            this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
             this.recordFailure(user, discoveredSlot, proxy, "Rate limited", "failed");
             return result;
 
           case "auth_failed":
-            // Auth failed - stop for this user
+            // Auth failed - stop for this user, release slot for others
             this.ispPool.release(proxy.id);
+            this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
             this.recordFailure(user, discoveredSlot, proxy, "Auth failed", "failed");
             return result;
 
           default:
-            // Other error - try next slot
+            // Other error - try next slot, release this slot for others
             this.ispPool.release(proxy.id);
             logger.warn(
               { userId: user.userId, slotTime: discoveredSlot.slot.time, status: result.status },
               "Booking failed - trying next slot"
             );
+            this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
             this.recordFailure(user, discoveredSlot, proxy, result.errorMessage ?? "Unknown error", "failed");
             slotIndex++;
             retryCount = 0;
         }
       } catch (error) {
-        // Unexpected error - release proxy and try next slot
+        // Unexpected error - release proxy and slot, try next
         this.ispPool.release(proxy.id);
+        this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
         const errorMsg = error instanceof Error ? error.message : String(error);
         logger.error(
           { userId: user.userId, error: errorMsg },
@@ -773,6 +828,7 @@ export class BookingCoordinator {
     this.rateLimitedUsers.clear();
     this.authFailedUsers.clear();
     this.accountExclusions = null;
+    this.claimedSlots.clear();
     this.ispPool.reset();
     logger.info("Coordinator state reset for new window");
   }
@@ -785,6 +841,7 @@ export class BookingCoordinator {
     successfulBookings: number;
     rateLimitedUsers: number;
     authFailedUsers: number;
+    claimedSlots: number;
     proxyPoolStatus: {
       available: number;
       inUse: number;
@@ -797,6 +854,7 @@ export class BookingCoordinator {
       successfulBookings: this.successfulBookings.size,
       rateLimitedUsers: this.rateLimitedUsers.size,
       authFailedUsers: this.authFailedUsers.size,
+      claimedSlots: this.claimedSlots.size,
       proxyPoolStatus: this.ispPool.getStatus(),
     };
   }
