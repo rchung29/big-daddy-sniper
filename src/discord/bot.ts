@@ -13,7 +13,6 @@ import {
   SlashCommandBuilder,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
-import pino from "pino";
 
 // Import commands
 import { registerCommand, handleRegister } from "./commands/register";
@@ -22,13 +21,7 @@ import { unsubscribeCommand, handleUnsubscribe } from "./commands/unsubscribe";
 import { listCommand, handleList } from "./commands/list";
 import { restaurantsCommand, handleRestaurants } from "./commands/restaurants";
 import { statusCommand, handleStatus } from "./commands/status";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 /**
  * All slash commands

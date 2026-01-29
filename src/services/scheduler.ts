@@ -8,14 +8,7 @@
 import { store } from "../store";
 import type { Restaurant, FullSubscription } from "../db/schema";
 import { DateTime } from "luxon";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Default: start scanning 45 seconds before release
 const DEFAULT_SCAN_START_SECONDS_BEFORE = 45;

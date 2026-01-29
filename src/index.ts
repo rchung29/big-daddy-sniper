@@ -21,14 +21,7 @@ import { getAccountReservationChecker } from "./services/account-reservation-che
 import { getProxyManager } from "./services/proxy-manager";
 import { checkResyIPOrExit } from "./services/ip-check";
 import { createDashboard } from "./dashboard";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger, getLogFilePath, isLoggingToFile } from "./logger";
 
 /**
  * Main entry point
@@ -224,17 +217,23 @@ async function main(): Promise<void> {
   // Start dashboard (if enabled)
   dashboard.start();
 
-  logger.info(
-    {
-      dryRun: config.DRY_RUN,
-      scanInterval: config.SCAN_INTERVAL_MS,
-      scanTimeout: config.SCAN_TIMEOUT_SECONDS,
-      scanStartBefore: config.SCAN_START_SECONDS_BEFORE,
-      architecture: "push-based",
-      dashboardEnabled: dashboard.isEnabled(),
-    },
-    "Big Daddy Sniper started successfully"
-  );
+  // Log startup info
+  const startupInfo = {
+    dryRun: config.DRY_RUN,
+    scanInterval: config.SCAN_INTERVAL_MS,
+    scanTimeout: config.SCAN_TIMEOUT_SECONDS,
+    scanStartBefore: config.SCAN_START_SECONDS_BEFORE,
+    architecture: "push-based",
+    dashboardEnabled: dashboard.isEnabled(),
+    logFile: isLoggingToFile() ? getLogFilePath() : undefined,
+  };
+
+  logger.info(startupInfo, "Big Daddy Sniper started successfully");
+
+  // If dashboard is enabled, also log via event bridge for visibility
+  if (dashboard.isEnabled()) {
+    eventBridge.info(`Logs written to: ${getLogFilePath()}`);
+  }
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {

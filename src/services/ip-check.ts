@@ -4,14 +4,7 @@
  */
 import { ResyClient } from "../sdk";
 import { ResyAPIError } from "../sdk/errors";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Known venue for testing (Carbone NYC)
 const TEST_VENUE_ID = 6194;

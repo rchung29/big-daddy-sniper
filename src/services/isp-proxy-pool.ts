@@ -12,14 +12,7 @@
  */
 import { store } from "../store";
 import type { Proxy } from "../db/schema";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Cooldown duration after WAF block: 5 minutes
 const COOLDOWN_DURATION_MS = 5 * 60 * 1000;

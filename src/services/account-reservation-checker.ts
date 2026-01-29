@@ -13,14 +13,7 @@
 import type { FullSubscription } from "../db/schema";
 import type { ProxyManager } from "./proxy-manager";
 import { ResyClient } from "../sdk";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Concurrency limit for fetching reservations
 const FETCH_CONCURRENCY = 5;

@@ -19,14 +19,7 @@ import type {
   BookingError,
   FullSubscription,
 } from "../db/schema";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Sync interval: 5 minutes
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;

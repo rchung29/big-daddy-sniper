@@ -32,14 +32,7 @@ import { store } from "../store";
 import { ResyClient, ResyAPIError } from "../sdk";
 import { parseSlotTime } from "../filters";
 import { getIspProxyPool, type IspProxyPool } from "./isp-proxy-pool";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Maximum retries per slot when hitting WAF blocks
 const MAX_RETRIES_PER_SLOT = 2;

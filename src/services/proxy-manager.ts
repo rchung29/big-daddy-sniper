@@ -8,14 +8,7 @@
  */
 import { store } from "../store";
 import type { Proxy } from "../db/schema";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Default rate limit duration: 15 minutes
 const DEFAULT_RATE_LIMIT_MS = 15 * 60 * 1000;

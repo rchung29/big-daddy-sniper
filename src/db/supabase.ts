@@ -7,14 +7,7 @@
  * - Write-through: Persist changes (fire-and-forget)
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 let supabase: SupabaseClient | null = null;
 

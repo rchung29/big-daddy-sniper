@@ -16,14 +16,7 @@ import { store } from "../store";
 import type { ReleaseWindow } from "./scheduler";
 import type { Restaurant } from "../db/schema";
 import { filterSlots, type SlotInfo } from "../filters";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 // Default configuration
 const DEFAULT_SCAN_INTERVAL_MS = 2000; // 2 seconds between scans to avoid proxy bans

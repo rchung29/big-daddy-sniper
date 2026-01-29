@@ -4,14 +4,7 @@
  */
 import type { UserBookingResult } from "../services/booking-coordinator";
 import type { DiscoveredSlot } from "../services/scanner";
-import pino from "pino";
-
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: { colorize: true },
-  },
-});
+import { logger } from "../logger";
 
 /**
  * Discord webhook embed structure
