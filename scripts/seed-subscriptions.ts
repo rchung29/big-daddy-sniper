@@ -1,10 +1,11 @@
 /**
- * Seed subscriptions for user_id=2
+ * Seed subscriptions for ALL accounts
  *
- * DELETES ALL EXISTING SUBSCRIPTIONS first, then creates fresh ones for every active restaurant.
+ * DELETES ALL EXISTING SUBSCRIPTIONS first, then creates fresh ones:
+ * - Every user subscribed to every active restaurant
  * - Party size: 4
- * - Time window: 7:00 PM - 10:00 PM
- * - Target days: null (any day)
+ * - Time window: 6:00 PM - 10:00 PM EST
+ * - Target days: Friday (5), Saturday (6), Sunday (0)
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -19,10 +20,10 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function seedSubscriptions() {
-  const userIds = [1];
   const partySize = 4;
-  const timeWindowStart = "19:00"; // 7:00 PM
-  const timeWindowEnd = "22:00";   // 10:00 PM
+  const timeWindowStart = "18:00"; // 6:00 PM EST
+  const timeWindowEnd = "22:00";   // 10:00 PM EST
+  const targetDays = [0, 5, 6];    // Sunday, Friday, Saturday
 
   // Step 1: Delete all existing subscriptions
   console.log("Deleting all existing subscriptions...");
@@ -37,7 +38,27 @@ async function seedSubscriptions() {
   }
   console.log("All subscriptions deleted.");
 
-  // Step 2: Fetch active restaurants
+  // Step 2: Fetch all users with valid Resy credentials
+  console.log("\nFetching all users with Resy credentials...");
+  const { data: users, error: userError } = await supabase
+    .from("users")
+    .select("id, discord_username")
+    .not("resy_auth_token", "is", null)
+    .not("resy_payment_method_id", "is", null);
+
+  if (userError) {
+    console.error("Failed to fetch users:", userError.message);
+    process.exit(1);
+  }
+
+  if (!users || users.length === 0) {
+    console.log("No users with Resy credentials found.");
+    process.exit(1);
+  }
+
+  console.log(`Found ${users.length} users with Resy credentials`);
+
+  // Step 3: Fetch active restaurants
   console.log("\nFetching active restaurants...");
   const { data: restaurants, error: fetchError } = await supabase
     .from("restaurants")
@@ -56,32 +77,32 @@ async function seedSubscriptions() {
 
   console.log(`Found ${restaurants.length} active restaurants`);
 
-  // Step 3: Create subscriptions for each user and restaurant
+  // Step 4: Create subscriptions for each user and restaurant
   const subscriptions: Array<{
     user_id: number;
     restaurant_id: number;
     party_size: number;
     time_window_start: string;
     time_window_end: string;
-    target_days: null;
+    target_days: number[];
     enabled: boolean;
   }> = [];
 
-  for (const userId of userIds) {
+  for (const user of users) {
     for (const r of restaurants) {
       subscriptions.push({
-        user_id: userId,
+        user_id: user.id,
         restaurant_id: r.id,
         party_size: partySize,
         time_window_start: timeWindowStart,
         time_window_end: timeWindowEnd,
-        target_days: null, // Any day of week
+        target_days: targetDays,
         enabled: true,
       });
     }
   }
 
-  console.log(`\nCreating ${subscriptions.length} subscriptions for users ${userIds.join(", ")}...`);
+  console.log(`\nCreating ${subscriptions.length} subscriptions (${users.length} users × ${restaurants.length} restaurants)...`);
 
   const { error: insertError } = await supabase
     .from("user_subscriptions")
@@ -93,12 +114,17 @@ async function seedSubscriptions() {
   }
 
   console.log("\nSubscriptions created successfully!");
-  console.log(`  User IDs: ${userIds.join(", ")}`);
+  console.log(`  Users: ${users.length}`);
   console.log(`  Party size: ${partySize}`);
-  console.log(`  Time window: ${timeWindowStart} - ${timeWindowEnd}`);
-  console.log(`  Target days: Any`);
+  console.log(`  Time window: ${timeWindowStart} - ${timeWindowEnd} EST`);
+  console.log(`  Target days: Friday, Saturday, Sunday`);
   console.log(`  Restaurants: ${restaurants.length}`);
   console.log(`  Total subscriptions: ${subscriptions.length}`);
+
+  console.log("\nUsers subscribed:");
+  for (const u of users) {
+    console.log(`  - ${u.discord_username ?? `User #${u.id}`}`);
+  }
 
   console.log("\nRestaurants subscribed:");
   for (const r of restaurants) {

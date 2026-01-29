@@ -17,6 +17,8 @@ import { initializeNotifier, getNotifier } from "./discord/notifications";
 import { getScheduler, type ReleaseWindow } from "./services/scheduler";
 import { getScanner, type ScanStats } from "./services/scanner";
 import { getBookingCoordinator } from "./services/booking-coordinator";
+import { getAccountReservationChecker } from "./services/account-reservation-checker";
+import { getProxyManager } from "./services/proxy-manager";
 import { checkResyIPOrExit } from "./services/ip-check";
 import pino from "pino";
 
@@ -63,8 +65,8 @@ async function main(): Promise<void> {
 
   await discordBot.start();
 
-  // Initialize notifier with Discord client
-  initializeNotifier(discordBot.getClient(), config.DISCORD_ADMIN_ID);
+  // Initialize notifier with webhook URL
+  initializeNotifier(config.DISCORD_WEBHOOK_URL);
 
   // Initialize booking coordinator (push-based architecture)
   const coordinator = getBookingCoordinator({
@@ -121,9 +123,9 @@ async function main(): Promise<void> {
         "Scan window complete"
       );
 
-      // Notify admin of scan summary
+      // Notify via webhook of scan summary
       const notifier = getNotifier();
-      if (notifier && config.DISCORD_ADMIN_ID) {
+      if (notifier) {
         const summary = [
           `**Scan Complete** - ${window.releaseTime}`,
           `Target date: ${window.targetDate}`,
@@ -135,15 +137,14 @@ async function main(): Promise<void> {
           `Successful bookings: ${coordinator.getStats().successfulBookings}`,
         ].join("\n");
 
-        try {
-          const adminUser = await discordBot.getClient().users.fetch(config.DISCORD_ADMIN_ID);
-          await adminUser.send(summary);
-        } catch (error) {
-          logger.error({ error: String(error) }, "Failed to send admin summary");
-        }
+        await notifier.notifyAdmin("Scan Complete", summary);
       }
     },
   });
+
+  // Initialize account reservation checker (uses datacenter proxies)
+  const proxyManager = getProxyManager();
+  const reservationChecker = getAccountReservationChecker(proxyManager);
 
   // Initialize scheduler
   const scheduler = getScheduler({
@@ -161,26 +162,48 @@ async function main(): Promise<void> {
       // Reset coordinator state for new window
       coordinator.reset();
 
-      // Notify users that scanning started
+      // Prefetch existing reservations to exclude accounts with conflicts
+      try {
+        const exclusions = await reservationChecker.prefetchReservations(
+          window.subscriptions,
+          window.targetDate
+        );
+        coordinator.setAccountExclusions(exclusions);
+
+        // Count how many users will be excluded
+        let excludedCount = 0;
+        for (const [userId] of exclusions.reservationsByUser) {
+          if (reservationChecker.shouldExcludeUser(exclusions, userId, window.targetDate)) {
+            excludedCount++;
+          }
+        }
+
+        logger.info(
+          {
+            totalAccounts: exclusions.totalAccounts,
+            excludedCount,
+            successfulFetches: exclusions.successfulFetches,
+            failedFetches: exclusions.failedFetches,
+          },
+          "Account reservation prefetch complete"
+        );
+      } catch (error) {
+        logger.error(
+          { error: String(error) },
+          "Prefetch failed - continuing without exclusions (fail-open)"
+        );
+      }
+
+      // Notify via webhook that scanning started
       const notifier = getNotifier();
       if (notifier) {
-        const userDiscordIds = new Set(
-          window.subscriptions.map((s) => s.discord_id)
+        const restaurantNames = [...new Set(window.subscriptions.map((s) => s.restaurant_name))];
+        await notifier.notifyScanStarted(
+          "",
+          restaurantNames,
+          window.targetDate,
+          window.releaseTime
         );
-        for (const discordId of userDiscordIds) {
-          const userSubs = window.subscriptions.filter(
-            (s) => s.discord_id === discordId
-          );
-          const restaurantNames = [
-            ...new Set(userSubs.map((s) => s.restaurant_name)),
-          ];
-          await notifier.notifyScanStarted(
-            discordId,
-            restaurantNames,
-            window.targetDate,
-            window.releaseTime
-          );
-        }
       }
 
       // Start scanning - runs in background, emits slots via callback

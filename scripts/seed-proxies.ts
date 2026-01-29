@@ -1,7 +1,7 @@
 /**
  * Seed proxies into the database
  *
- * Wipes all existing proxies and replaces with new list.
+ * Adds new proxies without deleting existing ones (skips duplicates).
  *
  * Run with: bun scripts/seed-proxies.ts
  */
@@ -17,6 +17,7 @@ const logger = pino({
 
 // Bright Data proxy format: host:port:username:password
 const DATACENTER_PROXIES = [
+  // dc_monitoring zone
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-109.70.67.131:t4wvz8ydjte4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-185.182.21.115:t4wvz8ydjte4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-94.46.2.194:t4wvz8ydjte4",
@@ -37,15 +38,33 @@ const DATACENTER_PROXIES = [
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-94.176.119.185:t4wvz8ydjte4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-204.3.16.127:t4wvz8ydjte4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-dc_monitoring-ip-85.89.196.3:t4wvz8ydjte4",
+  // monitoring_2 zone
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-2.59.0.102:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-45.143.173.119:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-92.255.35.237:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-45.134.115.248:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-80.240.118.27:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-95.215.36.209:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-167.160.41.77:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-161.123.42.220:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-161.123.29.132:44t846rthn4u",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-monitoring_2-ip-131.103.34.217:44t846rthn4u",
 ];
 
 const ISP_PROXIES = [
+  // booking zone
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-85.28.49.146:nustt43ofgg4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-158.46.159.227:nustt43ofgg4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-89.184.29.47:nustt43ofgg4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-158.46.203.154:nustt43ofgg4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-176.100.132.147:nustt43ofgg4",
   "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-booking-ip-93.177.92.111:nustt43ofgg4",
+  // isp2 zone
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-isp2-ip-31.204.4.189:fkh82lesgo4l",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-isp2-ip-158.46.152.158:fkh82lesgo4l",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-isp2-ip-213.109.189.101:fkh82lesgo4l",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-isp2-ip-66.17.229.131:fkh82lesgo4l",
+  "brd.superproxy.io:33335:brd-customer-hl_f0e0c345-zone-isp2-ip-178.171.74.184:fkh82lesgo4l",
 ];
 
 function parseBrightDataProxy(proxyStr: string): string {
@@ -73,53 +92,66 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Step 1: Delete ALL proxies
-  logger.info("Deleting all existing proxies...");
-  const { error: deleteError } = await supabase
+  // Step 1: Get existing proxy URLs to avoid duplicates
+  logger.info("Fetching existing proxies...");
+  const { data: existingProxies, error: fetchError } = await supabase
     .from("proxies")
-    .delete()
-    .neq("id", 0); // Delete all rows
+    .select("url");
 
-  if (deleteError) {
-    logger.error({ error: deleteError.message }, "Failed to delete proxies");
+  if (fetchError) {
+    logger.error({ error: fetchError.message }, "Failed to fetch existing proxies");
     process.exit(1);
   }
-  logger.info("All proxies deleted.");
 
-  // Step 2: Build proxy list
-  const proxies: Array<{ url: string; type: "datacenter" | "isp"; enabled: boolean }> = [];
+  const existingUrls = new Set(existingProxies?.map((p) => p.url) ?? []);
+  logger.info({ existingCount: existingUrls.size }, "Found existing proxies");
 
-  // Add datacenter proxies
+  // Step 2: Build proxy list (only new ones)
+  const newProxies: Array<{ url: string; type: "datacenter" | "isp"; enabled: boolean }> = [];
+
+  // Add datacenter proxies (skip existing)
   for (const str of DATACENTER_PROXIES) {
-    proxies.push({
-      url: parseBrightDataProxy(str),
-      type: "datacenter",
-      enabled: true,
-    });
+    const proxyUrl = parseBrightDataProxy(str);
+    if (!existingUrls.has(proxyUrl)) {
+      newProxies.push({
+        url: proxyUrl,
+        type: "datacenter",
+        enabled: true,
+      });
+    }
   }
 
-  // Add ISP proxies
+  // Add ISP proxies (skip existing)
   for (const str of ISP_PROXIES) {
-    proxies.push({
-      url: parseBrightDataProxy(str),
-      type: "isp",
-      enabled: true,
-    });
+    const proxyUrl = parseBrightDataProxy(str);
+    if (!existingUrls.has(proxyUrl)) {
+      newProxies.push({
+        url: proxyUrl,
+        type: "isp",
+        enabled: true,
+      });
+    }
   }
 
-  logger.info({ datacenter: DATACENTER_PROXIES.length, isp: ISP_PROXIES.length }, "Inserting proxies...");
+  if (newProxies.length === 0) {
+    logger.info("No new proxies to add - all already exist");
+  } else {
+    const newDatacenter = newProxies.filter((p) => p.type === "datacenter").length;
+    const newIsp = newProxies.filter((p) => p.type === "isp").length;
+    logger.info({ newDatacenter, newIsp, total: newProxies.length }, "Inserting new proxies...");
 
-  // Step 3: Insert all proxies
-  const { error: insertError } = await supabase.from("proxies").insert(proxies);
+    // Step 3: Insert new proxies
+    const { error: insertError } = await supabase.from("proxies").insert(newProxies);
 
-  if (insertError) {
-    logger.error({ error: insertError.message }, "Failed to insert proxies");
-    process.exit(1);
+    if (insertError) {
+      logger.error({ error: insertError.message }, "Failed to insert proxies");
+      process.exit(1);
+    }
+
+    logger.info("New proxies added successfully");
   }
 
-  logger.info("Proxies seeded successfully");
-
-  // Verify
+  // Verify final state
   const { data: allProxies } = await supabase
     .from("proxies")
     .select("id, type, enabled")

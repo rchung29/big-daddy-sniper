@@ -15,6 +15,7 @@
  */
 import type { DiscoveredSlot } from "./scanner";
 import type { Restaurant, FullSubscription, Proxy } from "../db/schema";
+import type { AccountExclusions } from "./account-reservation-checker";
 
 /**
  * Result of executing bookings for a user
@@ -128,6 +129,9 @@ export class BookingCoordinator {
   // Auth-failed users (bad token)
   private authFailedUsers = new Set<number>();
 
+  // Account exclusions (users with existing reservations on target date)
+  private accountExclusions: AccountExclusions | null = null;
+
   constructor(config: BookingCoordinatorConfig = {}) {
     this.apiKey = config.apiKey ?? process.env.RESY_API_KEY ?? "";
     this.dryRun = config.dryRun ?? process.env.DRY_RUN === "true";
@@ -142,6 +146,21 @@ export class BookingCoordinator {
   initialize(): void {
     this.ispPool.initialize();
     logger.info("Booking coordinator initialized with ISP proxy pool");
+  }
+
+  /**
+   * Set account exclusions (users with existing reservations)
+   * Called before booking window starts
+   */
+  setAccountExclusions(exclusions: AccountExclusions): void {
+    this.accountExclusions = exclusions;
+    logger.info(
+      {
+        totalAccounts: exclusions.totalAccounts,
+        targetDate: exclusions.targetDate,
+      },
+      "Account exclusions set for window"
+    );
   }
 
   /**
@@ -197,6 +216,16 @@ export class BookingCoordinator {
       // Skip if user has auth failure
       if (this.authFailedUsers.has(userId)) {
         logger.debug({ userId }, "Skipping - user auth failed");
+        continue;
+      }
+
+      // Skip if user has existing reservation on target date
+      if (this.hasExistingReservationOnDate(userId, targetDate)) {
+        const reason = this.getExclusionReason(userId, targetDate);
+        logger.info(
+          { userId, targetDate, restaurant: restaurant.name, reason },
+          "Skipping - user has existing reservation on target date"
+        );
         continue;
       }
 
@@ -595,6 +624,34 @@ export class BookingCoordinator {
   }
 
   /**
+   * Check if a user has an existing reservation on the target date
+   */
+  private hasExistingReservationOnDate(userId: number, targetDate: string): boolean {
+    if (!this.accountExclusions) return false;
+    if (this.accountExclusions.targetDate !== targetDate) return false;
+
+    const userReservations = this.accountExclusions.reservationsByUser.get(userId);
+    if (!userReservations || userReservations.length === 0) return false;
+
+    return userReservations.some((r) => r.date === targetDate);
+  }
+
+  /**
+   * Get the reason a user is excluded (for logging)
+   */
+  private getExclusionReason(userId: number, targetDate: string): string | null {
+    if (!this.accountExclusions) return null;
+
+    const userReservations = this.accountExclusions.reservationsByUser.get(userId);
+    if (!userReservations) return null;
+
+    const sameDayRes = userReservations.find((r) => r.date === targetDate);
+    if (!sameDayRes) return null;
+
+    return `Existing reservation at ${sameDayRes.venueName} at ${sameDayRes.timeSlot}`;
+  }
+
+  /**
    * Record successful booking attempt
    */
   private recordSuccess(
@@ -722,6 +779,7 @@ export class BookingCoordinator {
     this.successfulBookings.clear();
     this.rateLimitedUsers.clear();
     this.authFailedUsers.clear();
+    this.accountExclusions = null;
     this.ispPool.reset();
     logger.info("Coordinator state reset for new window");
   }

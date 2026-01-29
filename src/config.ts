@@ -14,6 +14,10 @@ export const AppConfigSchema = z.object({
     .string()
     .optional()
     .describe("Discord user ID for admin notifications"),
+  DISCORD_WEBHOOK_URL: z
+    .string()
+    .optional()
+    .describe("Discord webhook URL for booking notifications"),
 
   // Database (Supabase)
   SUPABASE_URL: z.string().min(1).describe("Supabase project URL"),
