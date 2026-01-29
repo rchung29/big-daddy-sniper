@@ -31,6 +31,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 
 const RESY_API_BASE = "https://api.resy.com";
 const RESY_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5";
+const DEFAULT_TIMEOUT_MS = 5000; // 5 seconds - fast enough for sniping
 
 // Rotate through realistic User-Agents to avoid fingerprinting
 const USER_AGENTS = [
@@ -54,6 +55,7 @@ export interface ResyClientConfig {
     apiKey?: string;
     debug?: boolean;
     proxyUrl?: string;
+    timeoutMs?: number;
 }
 
 /**
@@ -64,6 +66,7 @@ export class ResyClient {
     private apiKey: string;
     private debug: boolean;
     private proxyUrl?: string;
+    private timeoutMs: number;
     private axiosInstance: AxiosInstance;
 
     constructor(config: ResyClientConfig = {}) {
@@ -71,6 +74,7 @@ export class ResyClient {
         this.apiKey = config.apiKey ?? RESY_API_KEY;
         this.debug = config.debug ?? false;
         this.proxyUrl = config.proxyUrl;
+        this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
         this.axiosInstance = this.createAxiosInstance();
     }
 
@@ -80,7 +84,7 @@ export class ResyClient {
     private createAxiosInstance(): AxiosInstance {
         const config: AxiosRequestConfig = {
             baseURL: RESY_API_BASE,
-            timeout: 30000,
+            timeout: this.timeoutMs,
             // Don't throw on non-2xx status codes - we handle them manually
             validateStatus: () => true,
         };
