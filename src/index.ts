@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   validateConfig();
 
   // Check if IP is banned by Resy (fail fast)
-  await checkResyIPOrExit();
+  // await checkResyIPOrExit();
 
   // Initialize Supabase connection
   initializeSupabase();
