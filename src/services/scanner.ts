@@ -272,15 +272,31 @@ export class Scanner {
 
       return [];
     } catch (error) {
-      if (error instanceof ResyAPIError && error.status === 429) {
-        // Rate limited - if using proxies, mark the last used proxy
-        if (config.USE_PROXIES) {
+      if (error instanceof ResyAPIError) {
+        const shouldRotateProxy =
+          error.status === 429 || // Rate limited
+          error.status === 502 || // Bad gateway (proxy issue)
+          (error.status === 500 && (!error.rawBody || error.rawBody === "")); // WAF blocked
+
+        if (shouldRotateProxy && config.USE_PROXIES) {
           const proxy = this.proxyManager.getRotatingProxy();
           if (proxy) {
             this.proxyManager.markRateLimited(proxy.id);
           }
         }
-        logger.warn({ restaurant: restaurant.name }, "Rate limited during scan");
+
+        if (error.status === 429) {
+          logger.warn({ restaurant: restaurant.name }, "Rate limited during scan");
+        } else if (error.status === 502) {
+          logger.warn({ restaurant: restaurant.name }, "502 Bad Gateway - rotating proxy");
+        } else if (error.status === 500 && (!error.rawBody || error.rawBody === "")) {
+          logger.warn({ restaurant: restaurant.name }, "WAF blocked (500 empty) - rotating proxy");
+        } else {
+          logger.error(
+            { restaurant: restaurant.name, status: error.status, error: error.message },
+            "API error during scan"
+          );
+        }
       } else {
         logger.error(
           { restaurant: restaurant.name, error: String(error) },

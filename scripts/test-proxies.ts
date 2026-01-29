@@ -1,7 +1,7 @@
 /**
- * Test all proxies against Resy API
+ * Test all proxies against Resy API (in parallel)
  *
- * Makes a legitimate find request to venue 79460 using the SDK client.
+ * Makes a legitimate find request to venue 834 using the SDK client.
  * Expected: 200 = WORKING, error = BLOCKED by WAF
  *
  * Run with: bun scripts/test-proxies.ts
@@ -42,7 +42,7 @@ async function testProxy(proxyId: number, proxyUrl: string): Promise<{
   try {
     const client = new ResyClient({ proxyUrl });
     const result = await client.findSlots({
-      venue_id: 79460,
+      venue_id: 1263,
       day,
       party_size: 2,
     });
@@ -95,9 +95,8 @@ async function main() {
 
   const { data: proxies, error } = await supabase
     .from("proxies")
-    .select("id, url, enabled")
-    .eq("enabled", true)
-    .eq("type", "datacenter")
+    .select("id, url, type, enabled")
+    .eq("enabled", true);
 
   if (error) {
     console.error("Failed to fetch proxies:", error.message);
@@ -109,26 +108,25 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(`Testing ${proxies.length} proxies against Resy API (venue 79460)...\n`);
+  const dcCount = proxies.filter(p => p.type === "datacenter").length;
+  const ispCount = proxies.filter(p => p.type === "isp").length;
+  console.log(`Found ${proxies.length} proxies (${dcCount} datacenter, ${ispCount} ISP)\n`);
+
+  console.log(`Testing ${proxies.length} proxies against Resy API (venue 834) IN PARALLEL...\n`);
   console.log("Expected: 200 = WORKING, 500 empty = BLOCKED (WAF)\n");
 
-  const results: Array<{
-    id: number;
-    ip: string;
-    status: number;
-    latencyMs: number;
-    blocked: boolean;
-    body: string;
-    error?: string;
-  }> = [];
+  // Run all tests in parallel
+  const startTime = Date.now();
+  const results = await Promise.all(
+    proxies.map((proxy) => testProxy(proxy.id, proxy.url))
+  );
+  const totalTime = Date.now() - startTime;
 
-  for (const proxy of proxies) {
-    process.stdout.write(`[${proxy.id}] `);
+  // Sort by ID for consistent output
+  results.sort((a, b) => a.id - b.id);
 
-    const result = await testProxy(proxy.id, proxy.url);
-    results.push(result);
-
-    // Log full result to file
+  // Log results
+  for (const result of results) {
     logData.push({
       id: result.id,
       ip: result.ip,
@@ -140,13 +138,15 @@ async function main() {
     });
 
     if (result.error) {
-      console.log(`${result.ip} ... ERROR: ${result.error}`);
+      console.log(`[${result.id}] ${result.ip} ... ERROR: ${result.error}`);
     } else if (result.blocked) {
-      console.log(`${result.ip} ... BLOCKED (${result.status}) - ${result.latencyMs}ms`);
+      console.log(`[${result.id}] ${result.ip} ... BLOCKED (${result.status}) - ${result.latencyMs}ms`);
     } else {
-      console.log(`${result.ip} ... OK (${result.status}) - ${result.latencyMs}ms`);
+      console.log(`[${result.id}] ${result.ip} ... OK (${result.status}) - ${result.latencyMs}ms`);
     }
   }
+
+  console.log(`\nAll ${proxies.length} proxies tested in ${totalTime}ms (parallel)`)
 
   // Write log file
   await Bun.write(logFile, JSON.stringify(logData, null, 2));
