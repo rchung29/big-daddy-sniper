@@ -52,6 +52,8 @@ class Store {
 
   // Callback for getting next release times (set by scheduler)
   private getNextReleaseTimes: (() => Date[]) | null = null;
+  // Callback for when sync completes (set by scheduler)
+  private onSyncComplete: (() => void) | null = null;
 
   /**
    * Initialize store from Supabase
@@ -224,6 +226,11 @@ class Store {
         },
         "Sync complete"
       );
+
+      // Notify scheduler to recalculate windows with fresh data
+      if (this.onSyncComplete) {
+        this.onSyncComplete();
+      }
     } catch (error) {
       logger.error({ error: String(error) }, "Sync failed");
     }
@@ -234,6 +241,13 @@ class Store {
    */
   setReleasTimeCallback(callback: () => Date[]): void {
     this.getNextReleaseTimes = callback;
+  }
+
+  /**
+   * Set callback for when sync completes (called by scheduler)
+   */
+  setOnSyncComplete(callback: () => void): void {
+    this.onSyncComplete = callback;
   }
 
   // ============ Restaurant Operations ============

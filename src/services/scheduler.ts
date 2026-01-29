@@ -223,6 +223,12 @@ export class Scheduler {
     // Register callback with store for blackout window detection
     store.setReleasTimeCallback(() => this.getNextReleaseTimes());
 
+    // Register callback to recalculate windows when store syncs
+    store.setOnSyncComplete(() => {
+      logger.info("Store sync complete - recalculating release windows");
+      this.scheduleUpcomingWindows();
+    });
+
     this.scheduleUpcomingWindows();
 
     // Re-calculate windows every hour to pick up new subscriptions from memory
