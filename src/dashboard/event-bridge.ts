@@ -46,9 +46,7 @@ export interface DashboardState {
   passiveMonitor: {
     enabled: boolean;
     running: boolean;
-    lastPollAt: Date | null;
-    pollErrors: number;
-    datesFound: number;
+    hasErrors: boolean;
   };
 
   // Log entries (ring buffer)
@@ -123,9 +121,7 @@ export class EventBridge {
       passiveMonitor: {
         enabled: false,
         running: false,
-        lastPollAt: null,
-        pollErrors: 0,
-        datesFound: 0,
+        hasErrors: false,
       },
       logEntries: [],
     };
@@ -405,52 +401,19 @@ export class EventBridge {
    */
   setPassiveMonitorRunning(running: boolean): void {
     this.state.passiveMonitor.running = running;
+    // Clear error state when monitor restarts
     if (running) {
-      this.log("info", "PASSIVE: Monitor started");
-    } else {
-      this.log("info", "PASSIVE: Monitor stopped");
+      this.state.passiveMonitor.hasErrors = false;
     }
     this.notifyStateChange();
   }
 
   /**
-   * Log passive monitor poll
+   * Mark passive monitor as having errors
    */
-  logPassivePoll(targetsPolled: number): void {
-    this.state.passiveMonitor.lastPollAt = new Date();
+  setPassiveMonitorErrorState(hasErrors: boolean): void {
+    this.state.passiveMonitor.hasErrors = hasErrors;
     this.notifyStateChange();
-  }
-
-  /**
-   * Log passive monitor availability found
-   */
-  logPassiveAvailability(restaurant: string, date: string, slotsCount: number): void {
-    this.state.passiveMonitor.datesFound++;
-    this.log("success", `PASSIVE: ${restaurant} - ${slotsCount} slots on ${date}`, {
-      restaurant,
-      date,
-      slotsCount,
-    });
-    this.notifyStateChange();
-  }
-
-  /**
-   * Log passive monitor error
-   */
-  logPassiveError(restaurant: string, error: string): void {
-    this.state.passiveMonitor.pollErrors++;
-    this.log("warn", `PASSIVE: ${restaurant} - ${error}`, {
-      restaurant,
-      error,
-    });
-    this.notifyStateChange();
-  }
-
-  /**
-   * Log passive monitor blackout
-   */
-  logPassiveBlackout(): void {
-    this.log("info", "PASSIVE: Paused for release window");
   }
 }
 

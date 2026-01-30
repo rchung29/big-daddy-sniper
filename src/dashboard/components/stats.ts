@@ -19,9 +19,7 @@ export interface StatsData {
   passiveMonitor: {
     enabled: boolean;
     running: boolean;
-    lastPollAt: Date | null;
-    pollErrors: number;
-    datesFound: number;
+    hasErrors: boolean;
   };
 }
 
@@ -50,31 +48,32 @@ export function renderStats(
   let currentRow = startRow + 2;
   const maxContentRows = height - 3;
 
-  // Passive monitor status
-  const passiveStatus = data.passiveMonitor.enabled
-    ? data.passiveMonitor.running
-      ? colors.green("ON")
-      : colors.yellow("PAUSED")
-    : colors.dim("OFF");
+  // Passive monitor status: On / Erroring / Off
+  let passiveStatus: string;
+  if (!data.passiveMonitor?.enabled) {
+    passiveStatus = colors.dim("OFF");
+  } else if (data.passiveMonitor.hasErrors) {
+    passiveStatus = colors.red("ERRORING");
+  } else if (data.passiveMonitor.running) {
+    passiveStatus = colors.green("ON");
+  } else {
+    passiveStatus = colors.yellow("PAUSED");
+  }
 
-  // Stats lines
-  const stats = [
-    { label: "Passive", value: passiveStatus, isFormatted: true },
-    { label: "Slots Found", value: String(data.totalSlotsFound), color: colors.white },
-    { label: "Active", value: String(data.activeProcessors), color: colors.cyan },
-    { label: "Success", value: String(data.successfulBookings), color: colors.green },
-    { label: "Failed", value: String(data.failedBookings), color: colors.red },
-    { label: "P.Errors", value: String(data.passiveMonitor.pollErrors), color: data.passiveMonitor.pollErrors > 0 ? colors.yellow : colors.dim },
+  // Stats lines - each with label and pre-formatted value
+  const stats: Array<{ label: string; value: string }> = [
+    { label: "Passive", value: passiveStatus },
+    { label: "Slots Found", value: colors.white(String(data.totalSlotsFound)) },
+    { label: "Active", value: colors.cyan(String(data.activeProcessors)) },
+    { label: "Success", value: colors.green(String(data.successfulBookings)) },
+    { label: "Failed", value: colors.red(String(data.failedBookings)) },
   ];
 
   for (const stat of stats) {
     if (currentRow - startRow - 2 >= maxContentRows) break;
 
     const label = colors.dim(` ${stat.label}:`);
-    const value = "isFormatted" in stat && stat.isFormatted
-      ? stat.value
-      : stat.color ? stat.color(stat.value) : stat.value;
-    const line = `${label} ${value}`;
+    const line = `${label} ${stat.value}`;
 
     buffer.writeAt(currentRow, startCol, box.vertical + pad(line, innerWidth) + box.vertical);
     currentRow++;

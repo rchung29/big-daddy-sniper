@@ -18,6 +18,8 @@ import type {
   BookingAttempt,
   BookingError,
   FullSubscription,
+  PassiveTarget,
+  FullPassiveTarget,
 } from "../db/schema";
 import { logger } from "../logger";
 
@@ -36,6 +38,7 @@ class Store {
   private users = new Map<number, User>();
   private usersByDiscordId = new Map<string, User>();
   private subscriptions = new Map<number, UserSubscription>();
+  private passiveTargets = new Map<number, PassiveTarget>();
   private proxies = new Map<number, Proxy>();
 
   // Sync state
@@ -126,6 +129,19 @@ class Store {
     this.subscriptions.clear();
     for (const s of subscriptions ?? []) {
       this.subscriptions.set(s.id, s);
+    }
+
+    // Load passive targets
+    const { data: passiveTargets, error: passiveError } = await supabase
+      .from("passive_targets")
+      .select("*")
+      .eq("enabled", true);
+
+    if (passiveError) throw new Error(`Failed to load passive targets: ${passiveError.message}`);
+
+    this.passiveTargets.clear();
+    for (const p of passiveTargets ?? []) {
+      this.passiveTargets.set(p.id, p);
     }
 
     // Load proxies
@@ -492,6 +508,49 @@ class Store {
     return grouped;
   }
 
+  // ============ Passive Target Operations ============
+
+  /**
+   * Get all passive targets
+   */
+  getAllPassiveTargets(): PassiveTarget[] {
+    return Array.from(this.passiveTargets.values());
+  }
+
+  /**
+   * Get all active passive targets with full details (for passive monitor)
+   */
+  getFullPassiveTargets(): FullPassiveTarget[] {
+    const result: FullPassiveTarget[] = [];
+
+    for (const target of this.passiveTargets.values()) {
+      const user = this.users.get(target.user_id);
+      const restaurant = this.restaurants.get(target.restaurant_id);
+
+      if (
+        !user ||
+        !restaurant ||
+        !user.resy_auth_token ||
+        !user.resy_payment_method_id
+      ) {
+        continue;
+      }
+
+      result.push({
+        ...target,
+        venue_id: restaurant.venue_id,
+        restaurant_name: restaurant.name,
+        days_in_advance: restaurant.days_in_advance,
+        discord_id: user.discord_id,
+        resy_auth_token: user.resy_auth_token,
+        resy_payment_method_id: user.resy_payment_method_id,
+        preferred_proxy_id: user.preferred_proxy_id,
+      });
+    }
+
+    return result;
+  }
+
   async upsertSubscription(
     userId: number,
     restaurantId: number,
@@ -752,6 +811,7 @@ class Store {
       restaurants: number;
       users: number;
       subscriptions: number;
+      passiveTargets: number;
       proxies: number;
     };
   } {
@@ -762,6 +822,7 @@ class Store {
         restaurants: this.restaurants.size,
         users: this.users.size,
         subscriptions: this.subscriptions.size,
+        passiveTargets: this.passiveTargets.size,
         proxies: this.proxies.size,
       },
     };

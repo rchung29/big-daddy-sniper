@@ -260,6 +260,21 @@ export class DiscordNotifier {
 
     await this.sendWebhook(embed);
   }
+
+  /**
+   * Notify of passive monitor error
+   */
+  async notifyPassiveMonitorError(restaurant: string, error: string): Promise<void> {
+    const embed: WebhookEmbed = {
+      title: "⚠️ Passive Monitor Error",
+      description: `Error polling **${restaurant}**`,
+      color: 0xf39c12,
+      fields: [{ name: "Error", value: error.slice(0, 1024) }],
+      timestamp: new Date().toISOString(),
+    };
+
+    await this.sendWebhook(embed);
+  }
 }
 
 // Singleton instance

@@ -226,28 +226,30 @@ async function main(): Promise<void> {
       apiKey: config.RESY_API_KEY,
       pollIntervalMs: config.PASSIVE_POLL_INTERVAL_MS,
       blackoutMinutes: config.PASSIVE_BLACKOUT_MINUTES,
-      onSlotsDiscovered: (slots, restaurant, date, matchingSubs) => {
-        // Log to dashboard
-        eventBridge.logPassiveAvailability(restaurant.name, date, slots.length);
-
+      onSlotsDiscovered: (slots, restaurant, date, matchingTargets) => {
         logger.info(
           {
             restaurant: restaurant.name,
             date,
             slotsFound: slots.length,
-            matchingUsers: matchingSubs.length,
+            matchingTargets: matchingTargets.length,
           },
           "Passive monitor discovered slots - forwarding to coordinator"
         );
-        coordinator.onPassiveSlotsDiscovered(slots, restaurant, date, matchingSubs);
+        coordinator.onPassiveSlotsDiscovered(slots, restaurant, date, matchingTargets);
       },
       callbacks: {
-        onPollError: (restaurant, error) => {
-          eventBridge.logPassiveError(restaurant, error);
+        onPollError: async (restaurant, error) => {
+          // Update UI state to show erroring
+          eventBridge.setPassiveMonitorErrorState(true);
+          // Send error to Discord webhook
+          const notifier = getNotifier();
+          if (notifier) {
+            await notifier.notifyPassiveMonitorError(restaurant, error);
+          }
         },
         onBlackoutStart: () => {
           eventBridge.setPassiveMonitorRunning(false);
-          eventBridge.logPassiveBlackout();
         },
         onBlackoutEnd: () => {
           eventBridge.setPassiveMonitorRunning(true);

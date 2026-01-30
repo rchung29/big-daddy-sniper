@@ -1,21 +1,21 @@
 /**
  * Passive Monitor Service
  *
- * Polls calendar endpoints to detect available dates, matches to subscriptions
+ * Polls calendar endpoints to detect available dates, matches to passive targets
  * by day-of-week filter, fetches slots, and routes to BookingCoordinator.
  *
  * Flow:
- * 1. Get all FullSubscriptions (subscription + user + restaurant joined)
+ * 1. Get all FullPassiveTargets (passive_target + user + restaurant joined)
  * 2. Group by (venue_id, party_size) -> CalendarTarget
  * 3. Poll calendar for each target
- * 4. For each available date found, filter subscriptions by day-of-week
+ * 4. For each available date found, filter targets by day-of-week
  * 5. If matches, fetch slots and route to BookingCoordinator
  */
 import { DateTime } from "luxon";
 import { ResyClient } from "../sdk";
 import { store } from "../store";
 import { PassiveProxyPool } from "./passive-proxy-pool";
-import type { FullSubscription, Restaurant } from "../db/schema";
+import type { FullPassiveTarget, Restaurant } from "../db/schema";
 import type { DiscoveredSlot } from "./scanner";
 import type { SlotInfo } from "../filters";
 import { logger } from "../logger";
@@ -24,7 +24,7 @@ import { logger } from "../logger";
 const RELEASE_TIMES = ["00:00", "07:00", "09:00", "10:00", "12:00"];
 
 /**
- * Calendar polling target - groups subscriptions by venue+partySize
+ * Calendar polling target - groups passive targets by venue+partySize
  */
 interface CalendarTarget {
   venueId: string;
@@ -32,7 +32,7 @@ interface CalendarTarget {
   restaurantName: string;
   partySize: number;
   daysInAdvance: number;
-  subscriptionIds: number[];
+  targetIds: number[];
 }
 
 /**
@@ -55,7 +55,7 @@ export interface PassiveMonitorConfig {
     slots: DiscoveredSlot[],
     restaurant: Restaurant,
     date: string,
-    matchingSubs: FullSubscription[]
+    matchingTargets: FullPassiveTarget[]
   ) => void;
   callbacks?: PassiveMonitorCallbacks;
 }
@@ -242,13 +242,13 @@ export class PassiveMonitorService {
     client: ResyClient
   ): Promise<void> {
     for (const date of availableDates) {
-      // Find subscriptions that want this specific day of week
-      const matchingSubs = this.matchSubscriptionsToDate(target, date);
+      // Find passive targets that want this specific day of week
+      const matchingTargets = this.matchTargetsToDate(target, date);
 
-      if (matchingSubs.length === 0) {
+      if (matchingTargets.length === 0) {
         logger.debug(
           { date, venue: target.restaurantName },
-          "Available date but no subscriptions want this day of week"
+          "Available date but no targets want this day of week"
         );
         continue;
       }
@@ -258,9 +258,9 @@ export class PassiveMonitorService {
           date,
           venue: target.restaurantName,
           partySize: target.partySize,
-          matchingUsers: matchingSubs.length,
+          matchingTargets: matchingTargets.length,
         },
-        "Found availability with matching subscriptions"
+        "Found availability with matching targets"
       );
 
       // Fetch actual slots
@@ -312,9 +312,9 @@ export class PassiveMonitorService {
           "Slots discovered via passive monitor - routing to coordinator"
         );
 
-        // Route to coordinator with pre-matched subscriptions
+        // Route to coordinator with pre-matched targets
         // Coordinator handles deduplication (won't re-book if already successful)
-        this.onSlotsDiscovered(discoveredSlots, restaurant, date, matchingSubs);
+        this.onSlotsDiscovered(discoveredSlots, restaurant, date, matchingTargets);
       } catch (error) {
         logger.error(
           {
@@ -329,26 +329,26 @@ export class PassiveMonitorService {
   }
 
   /**
-   * Rebuild targets from current subscriptions
+   * Rebuild targets from current passive targets
    */
   private rebuildTargets(): void {
-    const subscriptions = store.getFullSubscriptions();
+    const passiveTargets = store.getFullPassiveTargets();
     const targetMap = new Map<string, CalendarTarget>();
 
-    for (const sub of subscriptions) {
-      const key = `${sub.venue_id}:${sub.party_size}`;
+    for (const pt of passiveTargets) {
+      const key = `${pt.venue_id}:${pt.party_size}`;
 
       if (!targetMap.has(key)) {
         targetMap.set(key, {
-          venueId: sub.venue_id,
-          restaurantId: sub.restaurant_id,
-          restaurantName: sub.restaurant_name,
-          partySize: sub.party_size,
-          daysInAdvance: sub.days_in_advance,
-          subscriptionIds: [],
+          venueId: pt.venue_id,
+          restaurantId: pt.restaurant_id,
+          restaurantName: pt.restaurant_name,
+          partySize: pt.party_size,
+          daysInAdvance: pt.days_in_advance,
+          targetIds: [],
         });
       }
-      targetMap.get(key)!.subscriptionIds.push(sub.id);
+      targetMap.get(key)!.targetIds.push(pt.id);
     }
 
     this.targets = Array.from(targetMap.values());
@@ -359,7 +359,7 @@ export class PassiveMonitorService {
         targets: this.targets.map((t) => ({
           venue: t.restaurantName,
           partySize: t.partySize,
-          subs: t.subscriptionIds.length,
+          targets: t.targetIds.length,
         })),
       },
       "Rebuilt calendar targets"
@@ -367,27 +367,27 @@ export class PassiveMonitorService {
   }
 
   /**
-   * Match subscriptions to a specific date based on day-of-week filter
+   * Match passive targets to a specific date based on day-of-week filter
    */
-  private matchSubscriptionsToDate(
+  private matchTargetsToDate(
     target: CalendarTarget,
     date: string
-  ): FullSubscription[] {
+  ): FullPassiveTarget[] {
     // Get day of week (0=Sun, 6=Sat) - Luxon weekday is 1=Mon, 7=Sun
     const luxonWeekday = DateTime.fromISO(date).weekday;
     const dayOfWeek = luxonWeekday === 7 ? 0 : luxonWeekday; // Convert to 0=Sun
 
-    const allSubs = store.getFullSubscriptions();
-    const targetSubs = allSubs.filter((s) =>
-      target.subscriptionIds.includes(s.id)
+    const allTargets = store.getFullPassiveTargets();
+    const matchingTargets = allTargets.filter((pt) =>
+      target.targetIds.includes(pt.id)
     );
 
     // Filter by day-of-week preference
-    return targetSubs.filter((sub) => {
-      if (!sub.target_days || sub.target_days.length === 0) {
+    return matchingTargets.filter((pt) => {
+      if (!pt.target_days || pt.target_days.length === 0) {
         return true; // No filter = wants any day
       }
-      return sub.target_days.includes(dayOfWeek);
+      return pt.target_days.includes(dayOfWeek);
     });
   }
 

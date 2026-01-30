@@ -1,15 +1,15 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test";
 import { DateTime } from "luxon";
-import type { FullSubscription, Restaurant } from "../db/schema";
+import type { FullPassiveTarget, Restaurant } from "../db/schema";
 
 // Mock the store module
-const mockGetFullSubscriptions = mock((): FullSubscription[] => []);
+const mockGetFullPassiveTargets = mock((): FullPassiveTarget[] => []);
 const mockGetRestaurantById = mock((): Restaurant | undefined => undefined);
 const mockGetDatacenterProxies = mock(() => []);
 
 mock.module("../store", () => ({
   store: {
-    getFullSubscriptions: mockGetFullSubscriptions,
+    getFullPassiveTargets: mockGetFullPassiveTargets,
     getRestaurantById: mockGetRestaurantById,
     getDatacenterProxies: mockGetDatacenterProxies,
   },
@@ -51,15 +51,15 @@ import { PassiveMonitorService } from "./passive-monitor";
 
 describe("PassiveMonitorService", () => {
   beforeEach(() => {
-    mockGetFullSubscriptions.mockReset();
+    mockGetFullPassiveTargets.mockReset();
     mockGetRestaurantById.mockReset();
     mockGetCalendar.mockReset();
     mockFindSlots.mockReset();
   });
 
   describe("day-of-week matching", () => {
-    test("subscription with no target_days matches any day", () => {
-      const sub: FullSubscription = {
+    test("target with no target_days matches any day", () => {
+      const target: FullPassiveTarget = {
         id: 1,
         user_id: 1,
         restaurant_id: 1,
@@ -74,21 +74,20 @@ describe("PassiveMonitorService", () => {
         restaurant_name: "Test Restaurant",
         venue_id: "123",
         days_in_advance: 14,
-        release_time: "09:00",
         discord_id: "user123",
         resy_auth_token: "token",
         resy_payment_method_id: 1,
         preferred_proxy_id: null,
       };
 
-      mockGetFullSubscriptions.mockReturnValue([sub]);
+      mockGetFullPassiveTargets.mockReturnValue([target]);
 
       // Sunday (0), Monday (1), etc. should all match
-      expect(sub.target_days).toBeNull();
+      expect(target.target_days).toBeNull();
     });
 
-    test("subscription with empty target_days matches any day", () => {
-      const sub: FullSubscription = {
+    test("target with empty target_days matches any day", () => {
+      const target: FullPassiveTarget = {
         id: 1,
         user_id: 1,
         restaurant_id: 1,
@@ -103,21 +102,20 @@ describe("PassiveMonitorService", () => {
         restaurant_name: "Test Restaurant",
         venue_id: "123",
         days_in_advance: 14,
-        release_time: "09:00",
         discord_id: "user123",
         resy_auth_token: "token",
         resy_payment_method_id: 1,
         preferred_proxy_id: null,
       };
 
-      mockGetFullSubscriptions.mockReturnValue([sub]);
+      mockGetFullPassiveTargets.mockReturnValue([target]);
 
-      expect(sub.target_days).toEqual([]);
+      expect(target.target_days).toEqual([]);
     });
 
-    test("subscription with specific target_days filters correctly", () => {
-      // Subscribe for weekends only (Saturday=6, Sunday=0)
-      const sub: FullSubscription = {
+    test("target with specific target_days filters correctly", () => {
+      // Target for weekends only (Saturday=6, Sunday=0)
+      const target: FullPassiveTarget = {
         id: 1,
         user_id: 1,
         restaurant_id: 1,
@@ -132,7 +130,6 @@ describe("PassiveMonitorService", () => {
         restaurant_name: "Test Restaurant",
         venue_id: "123",
         days_in_advance: 14,
-        release_time: "09:00",
         discord_id: "user123",
         resy_auth_token: "token",
         resy_payment_method_id: 1,
@@ -144,27 +141,27 @@ describe("PassiveMonitorService", () => {
       const luxonWeekday = DateTime.fromISO(saturdayDate).weekday; // 6 for Saturday
       const dayOfWeek = luxonWeekday === 7 ? 0 : luxonWeekday; // 6
 
-      expect(sub.target_days?.includes(dayOfWeek)).toBe(true);
+      expect(target.target_days?.includes(dayOfWeek)).toBe(true);
 
       // 2025-02-02 is a Sunday
       const sundayDate = "2025-02-02";
       const sundayLuxon = DateTime.fromISO(sundayDate).weekday; // 7 for Sunday
       const sundayDow = sundayLuxon === 7 ? 0 : sundayLuxon; // 0
 
-      expect(sub.target_days?.includes(sundayDow)).toBe(true);
+      expect(target.target_days?.includes(sundayDow)).toBe(true);
 
       // 2025-02-03 is a Monday
       const mondayDate = "2025-02-03";
       const mondayLuxon = DateTime.fromISO(mondayDate).weekday; // 1 for Monday
       const mondayDow = mondayLuxon === 7 ? 0 : mondayLuxon; // 1
 
-      expect(sub.target_days?.includes(mondayDow)).toBe(false);
+      expect(target.target_days?.includes(mondayDow)).toBe(false);
     });
   });
 
   describe("target grouping", () => {
-    test("groups subscriptions by venue_id and party_size", () => {
-      const subs: FullSubscription[] = [
+    test("groups targets by venue_id and party_size", () => {
+      const targets: FullPassiveTarget[] = [
         {
           id: 1,
           user_id: 1,
@@ -180,7 +177,6 @@ describe("PassiveMonitorService", () => {
           restaurant_name: "Restaurant A",
           venue_id: "100",
           days_in_advance: 14,
-          release_time: "09:00",
           discord_id: "user1",
           resy_auth_token: "token1",
           resy_payment_method_id: 1,
@@ -201,7 +197,6 @@ describe("PassiveMonitorService", () => {
           restaurant_name: "Restaurant A",
           venue_id: "100",
           days_in_advance: 14,
-          release_time: "09:00",
           discord_id: "user2",
           resy_auth_token: "token2",
           resy_payment_method_id: 2,
@@ -222,7 +217,6 @@ describe("PassiveMonitorService", () => {
           restaurant_name: "Restaurant A",
           venue_id: "100",
           days_in_advance: 14,
-          release_time: "09:00",
           discord_id: "user1",
           resy_auth_token: "token1",
           resy_payment_method_id: 1,
@@ -232,12 +226,12 @@ describe("PassiveMonitorService", () => {
 
       // Group by venue_id:party_size
       const groups = new Map<string, number[]>();
-      for (const sub of subs) {
-        const key = `${sub.venue_id}:${sub.party_size}`;
+      for (const target of targets) {
+        const key = `${target.venue_id}:${target.party_size}`;
         if (!groups.has(key)) {
           groups.set(key, []);
         }
-        groups.get(key)!.push(sub.id);
+        groups.get(key)!.push(target.id);
       }
 
       expect(groups.size).toBe(2);
@@ -298,7 +292,7 @@ describe("PassiveMonitorService", () => {
         onSlotsDiscovered,
       });
 
-      mockGetFullSubscriptions.mockReturnValue([]);
+      mockGetFullPassiveTargets.mockReturnValue([]);
 
       // Should start without error
       monitor.start();

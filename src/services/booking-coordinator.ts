@@ -14,7 +14,7 @@
  * - Successful bookings: Don't keep trying after success
  */
 import type { DiscoveredSlot } from "./scanner";
-import type { Restaurant, FullSubscription, Proxy } from "../db/schema";
+import type { Restaurant, FullSubscription, FullPassiveTarget, Proxy } from "../db/schema";
 import type { AccountExclusions } from "./account-reservation-checker";
 
 /**
@@ -218,13 +218,13 @@ export class BookingCoordinator {
 
   /**
    * Handle discovered slots from passive monitor - pre-filtered by day-of-week
-   * This accepts pre-matched subscriptions that already passed day-of-week filter
+   * This accepts pre-matched passive targets that already passed day-of-week filter
    */
   onPassiveSlotsDiscovered(
     slots: DiscoveredSlot[],
     restaurant: Restaurant,
     date: string,
-    matchingSubs: FullSubscription[]
+    matchingTargets: FullPassiveTarget[]
   ): void {
     if (slots.length === 0) return;
 
@@ -233,18 +233,19 @@ export class BookingCoordinator {
         restaurant: restaurant.name,
         date,
         slotsFound: slots.length,
-        matchingUsers: matchingSubs.length,
+        matchingTargets: matchingTargets.length,
         slots: slots.map((s) => ({ time: s.slot.time, type: s.slot.type })),
       },
       "Coordinator received slots from passive monitor"
     );
 
-    if (matchingSubs.length === 0) {
-      logger.warn({ restaurant: restaurant.name }, "No matching subscriptions for passive slots");
+    if (matchingTargets.length === 0) {
+      logger.warn({ restaurant: restaurant.name }, "No matching targets for passive slots");
       return;
     }
 
-    this.processSlots(slots, restaurant, matchingSubs);
+    // FullPassiveTarget has the same booking-relevant fields as FullSubscription
+    this.processSlots(slots, restaurant, matchingTargets as unknown as FullSubscription[]);
   }
 
   /**
