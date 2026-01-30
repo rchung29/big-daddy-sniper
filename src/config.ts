@@ -63,6 +63,23 @@ export const AppConfigSchema = z.object({
     .optional()
     .transform((val) => val?.toLowerCase() !== "false")
     .describe("Enable CLI dashboard (default: true if TTY)"),
+
+  // Passive Monitor settings
+  PASSIVE_MONITOR_ENABLED: z
+    .string()
+    .optional()
+    .transform((val) => val?.toLowerCase() === "true")
+    .describe("Enable passive calendar monitoring for availability"),
+  PASSIVE_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .default(60000)
+    .describe("Milliseconds between passive calendar polls"),
+  PASSIVE_BLACKOUT_MINUTES: z.coerce
+    .number()
+    .int()
+    .default(5)
+    .describe("Minutes around release times to pause passive monitoring"),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

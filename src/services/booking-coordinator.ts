@@ -213,6 +213,48 @@ export class BookingCoordinator {
       return;
     }
 
+    this.processSlots(slots, restaurant, fullSubscriptions);
+  }
+
+  /**
+   * Handle discovered slots from passive monitor - pre-filtered by day-of-week
+   * This accepts pre-matched subscriptions that already passed day-of-week filter
+   */
+  onPassiveSlotsDiscovered(
+    slots: DiscoveredSlot[],
+    restaurant: Restaurant,
+    date: string,
+    matchingSubs: FullSubscription[]
+  ): void {
+    if (slots.length === 0) return;
+
+    logger.info(
+      {
+        restaurant: restaurant.name,
+        date,
+        slotsFound: slots.length,
+        matchingUsers: matchingSubs.length,
+        slots: slots.map((s) => ({ time: s.slot.time, type: s.slot.type })),
+      },
+      "Coordinator received slots from passive monitor"
+    );
+
+    if (matchingSubs.length === 0) {
+      logger.warn({ restaurant: restaurant.name }, "No matching subscriptions for passive slots");
+      return;
+    }
+
+    this.processSlots(slots, restaurant, matchingSubs);
+  }
+
+  /**
+   * Process slots for a set of subscriptions (shared by scanner and passive monitor)
+   */
+  private processSlots(
+    slots: DiscoveredSlot[],
+    restaurant: Restaurant,
+    fullSubscriptions: FullSubscription[]
+  ): void {
     // Group by user and start processors
     const userSubscriptions = this.groupSubscriptionsByUser(fullSubscriptions);
 

@@ -262,6 +262,7 @@ export class Dashboard {
       totalSlotsFound: state.totalSlotsFound,
       wafBlocks: state.wafBlocks,
       rateLimits: state.rateLimits,
+      passiveMonitor: state.passiveMonitor,
     };
   }
 

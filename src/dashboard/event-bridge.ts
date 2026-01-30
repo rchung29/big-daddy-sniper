@@ -42,6 +42,15 @@ export interface DashboardState {
   wafBlocks: number;
   rateLimits: number;
 
+  // Passive monitor state
+  passiveMonitor: {
+    enabled: boolean;
+    running: boolean;
+    lastPollAt: Date | null;
+    pollErrors: number;
+    datesFound: number;
+  };
+
   // Log entries (ring buffer)
   logEntries: LogEntry[];
 }
@@ -111,6 +120,13 @@ export class EventBridge {
       failedBookings: 0,
       wafBlocks: 0,
       rateLimits: 0,
+      passiveMonitor: {
+        enabled: false,
+        running: false,
+        lastPollAt: null,
+        pollErrors: 0,
+        datesFound: 0,
+      },
       logEntries: [],
     };
   }
@@ -161,6 +177,9 @@ export class EventBridge {
    * Reset state for new scan window
    */
   reset(): void {
+    // Preserve passive monitor state across resets
+    const passiveMonitorState = this.state.passiveMonitor;
+
     this.state = {
       activeScanWindow: null,
       scanStartedAt: null,
@@ -170,6 +189,7 @@ export class EventBridge {
       failedBookings: 0,
       wafBlocks: 0,
       rateLimits: 0,
+      passiveMonitor: passiveMonitorState,
       logEntries: [],
     };
     // Keep log buffer for continuity
@@ -368,6 +388,69 @@ export class EventBridge {
    */
   error(message: string, details?: Record<string, unknown>): void {
     this.log("error", message, details);
+  }
+
+  // ============ Passive Monitor Events ============
+
+  /**
+   * Set passive monitor enabled state
+   */
+  setPassiveMonitorEnabled(enabled: boolean): void {
+    this.state.passiveMonitor.enabled = enabled;
+    this.notifyStateChange();
+  }
+
+  /**
+   * Update passive monitor running state
+   */
+  setPassiveMonitorRunning(running: boolean): void {
+    this.state.passiveMonitor.running = running;
+    if (running) {
+      this.log("info", "PASSIVE: Monitor started");
+    } else {
+      this.log("info", "PASSIVE: Monitor stopped");
+    }
+    this.notifyStateChange();
+  }
+
+  /**
+   * Log passive monitor poll
+   */
+  logPassivePoll(targetsPolled: number): void {
+    this.state.passiveMonitor.lastPollAt = new Date();
+    this.notifyStateChange();
+  }
+
+  /**
+   * Log passive monitor availability found
+   */
+  logPassiveAvailability(restaurant: string, date: string, slotsCount: number): void {
+    this.state.passiveMonitor.datesFound++;
+    this.log("success", `PASSIVE: ${restaurant} - ${slotsCount} slots on ${date}`, {
+      restaurant,
+      date,
+      slotsCount,
+    });
+    this.notifyStateChange();
+  }
+
+  /**
+   * Log passive monitor error
+   */
+  logPassiveError(restaurant: string, error: string): void {
+    this.state.passiveMonitor.pollErrors++;
+    this.log("warn", `PASSIVE: ${restaurant} - ${error}`, {
+      restaurant,
+      error,
+    });
+    this.notifyStateChange();
+  }
+
+  /**
+   * Log passive monitor blackout
+   */
+  logPassiveBlackout(): void {
+    this.log("info", "PASSIVE: Paused for release window");
   }
 }
 

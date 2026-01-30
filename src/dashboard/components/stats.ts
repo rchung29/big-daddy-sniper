@@ -16,6 +16,13 @@ export interface StatsData {
   totalSlotsFound: number;
   wafBlocks: number;
   rateLimits: number;
+  passiveMonitor: {
+    enabled: boolean;
+    running: boolean;
+    lastPollAt: Date | null;
+    pollErrors: number;
+    datesFound: number;
+  };
 }
 
 /**
@@ -43,21 +50,30 @@ export function renderStats(
   let currentRow = startRow + 2;
   const maxContentRows = height - 3;
 
+  // Passive monitor status
+  const passiveStatus = data.passiveMonitor.enabled
+    ? data.passiveMonitor.running
+      ? colors.green("ON")
+      : colors.yellow("PAUSED")
+    : colors.dim("OFF");
+
   // Stats lines
   const stats = [
-    { label: "Slots Found", value: data.totalSlotsFound, color: colors.white },
-    { label: "Active", value: data.activeProcessors, color: colors.cyan },
-    { label: "Success", value: data.successfulBookings, color: colors.green },
-    { label: "Failed", value: data.failedBookings, color: colors.red },
-    { label: "WAF Blocks", value: data.wafBlocks, color: colors.yellow },
-    { label: "Rate Ltd", value: data.rateLimits, color: colors.magenta },
+    { label: "Passive", value: passiveStatus, isFormatted: true },
+    { label: "Slots Found", value: String(data.totalSlotsFound), color: colors.white },
+    { label: "Active", value: String(data.activeProcessors), color: colors.cyan },
+    { label: "Success", value: String(data.successfulBookings), color: colors.green },
+    { label: "Failed", value: String(data.failedBookings), color: colors.red },
+    { label: "P.Errors", value: String(data.passiveMonitor.pollErrors), color: data.passiveMonitor.pollErrors > 0 ? colors.yellow : colors.dim },
   ];
 
   for (const stat of stats) {
     if (currentRow - startRow - 2 >= maxContentRows) break;
 
     const label = colors.dim(` ${stat.label}:`);
-    const value = stat.color(String(stat.value));
+    const value = "isFormatted" in stat && stat.isFormatted
+      ? stat.value
+      : stat.color ? stat.color(stat.value) : stat.value;
     const line = `${label} ${value}`;
 
     buffer.writeAt(currentRow, startCol, box.vertical + pad(line, innerWidth) + box.vertical);

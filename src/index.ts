@@ -19,6 +19,7 @@ import { getScanner, type ScanStats } from "./services/scanner";
 import { getBookingCoordinator } from "./services/booking-coordinator";
 import { getAccountReservationChecker } from "./services/account-reservation-checker";
 import { getProxyManager } from "./services/proxy-manager";
+import { PassiveMonitorService } from "./services/passive-monitor";
 import { checkResyIPOrExit } from "./services/ip-check";
 import { createDashboard } from "./dashboard";
 import { logger, getLogFilePath, isLoggingToFile } from "./logger";
@@ -214,6 +215,58 @@ async function main(): Promise<void> {
 
   scheduler.start();
 
+  // Initialize passive monitor if enabled
+  // Uses datacenter proxies for calendar polling, pauses during release windows
+  let passiveMonitor: PassiveMonitorService | null = null;
+  if (config.PASSIVE_MONITOR_ENABLED) {
+    // Update dashboard state
+    eventBridge.setPassiveMonitorEnabled(true);
+
+    passiveMonitor = new PassiveMonitorService({
+      apiKey: config.RESY_API_KEY,
+      pollIntervalMs: config.PASSIVE_POLL_INTERVAL_MS,
+      blackoutMinutes: config.PASSIVE_BLACKOUT_MINUTES,
+      onSlotsDiscovered: (slots, restaurant, date, matchingSubs) => {
+        // Log to dashboard
+        eventBridge.logPassiveAvailability(restaurant.name, date, slots.length);
+
+        logger.info(
+          {
+            restaurant: restaurant.name,
+            date,
+            slotsFound: slots.length,
+            matchingUsers: matchingSubs.length,
+          },
+          "Passive monitor discovered slots - forwarding to coordinator"
+        );
+        coordinator.onPassiveSlotsDiscovered(slots, restaurant, date, matchingSubs);
+      },
+      callbacks: {
+        onPollError: (restaurant, error) => {
+          eventBridge.logPassiveError(restaurant, error);
+        },
+        onBlackoutStart: () => {
+          eventBridge.setPassiveMonitorRunning(false);
+          eventBridge.logPassiveBlackout();
+        },
+        onBlackoutEnd: () => {
+          eventBridge.setPassiveMonitorRunning(true);
+        },
+      },
+    });
+
+    passiveMonitor.start();
+    eventBridge.setPassiveMonitorRunning(true);
+
+    logger.info(
+      {
+        pollIntervalMs: config.PASSIVE_POLL_INTERVAL_MS,
+        blackoutMinutes: config.PASSIVE_BLACKOUT_MINUTES,
+      },
+      "Passive monitor started (using datacenter proxies)"
+    );
+  }
+
   // Start dashboard (if enabled)
   dashboard.start();
 
@@ -225,6 +278,7 @@ async function main(): Promise<void> {
     scanStartBefore: config.SCAN_START_SECONDS_BEFORE,
     architecture: "push-based",
     dashboardEnabled: dashboard.isEnabled(),
+    passiveMonitorEnabled: config.PASSIVE_MONITOR_ENABLED,
     logFile: isLoggingToFile() ? getLogFilePath() : undefined,
   };
 
@@ -241,6 +295,7 @@ async function main(): Promise<void> {
     dashboard.stop();
     scheduler.stop();
     scanner.stopAllScans();
+    passiveMonitor?.stop();
     store.stopPeriodicSync();
     await discordBot.stop();
     await closeSupabase();
