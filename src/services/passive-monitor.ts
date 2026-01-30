@@ -211,6 +211,25 @@ export class PassiveMonitorService {
       end_date: endDate.toFormat("yyyy-MM-dd"),
     });
 
+    // DEBUG: Log all unique inventory status values we see (temporary)
+    const uniqueStatuses = new Set<string>();
+    for (const day of response.scheduled) {
+      uniqueStatuses.add(day.inventory.reservation);
+      uniqueStatuses.add(day.inventory.event);
+      uniqueStatuses.add(day.inventory["walk-in"]);
+    }
+    logger.info(
+      {
+        restaurant: target.restaurantName,
+        inventoryStatuses: Array.from(uniqueStatuses),
+        sampleDays: response.scheduled.slice(0, 3).map((d) => ({
+          date: d.date,
+          inventory: d.inventory,
+        })),
+      },
+      "Calendar response inventory values"
+    );
+
     // Find available dates
     const availableDates = response.scheduled
       .filter((day) => day.inventory.reservation === "available")

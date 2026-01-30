@@ -1,12 +1,18 @@
 import { z } from "zod";
 
 /**
+ * Inventory status values we recognize
+ * Resy may return other values, so we use a string with a default
+ */
+const InventoryValue = z.string().catch("unknown");
+
+/**
  * Inventory status for a date
  */
 export const InventoryStatusSchema = z.object({
-    reservation: z.enum(["available", "sold-out", "not available"]),
-    event: z.enum(["available", "sold-out", "not available"]),
-    "walk-in": z.enum(["available", "sold-out", "not available"]),
+    reservation: InventoryValue,
+    event: InventoryValue,
+    "walk-in": InventoryValue,
 });
 
 export type InventoryStatus = z.infer<typeof InventoryStatusSchema>;
