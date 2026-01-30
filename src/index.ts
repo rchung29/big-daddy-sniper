@@ -218,9 +218,50 @@ async function main(): Promise<void> {
   // Initialize passive monitor if enabled
   // Uses datacenter proxies for calendar polling, pauses during release windows
   let passiveMonitor: PassiveMonitorService | null = null;
+  let passiveErrorBatchTimer: Timer | null = null;
   if (config.PASSIVE_MONITOR_ENABLED) {
     // Update dashboard state
     eventBridge.setPassiveMonitorEnabled(true);
+
+    // Error batching: collect errors and send summary every 5 minutes
+    const ERROR_BATCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    const errorBatch = new Map<string, { count: number; lastError: string }>();
+
+    const flushErrorBatch = async () => {
+      if (errorBatch.size === 0) return;
+
+      const notifier = getNotifier();
+      if (!notifier) {
+        errorBatch.clear();
+        return;
+      }
+
+      // Build summary
+      const entries = Array.from(errorBatch.entries());
+      const totalErrors = entries.reduce((sum, [, v]) => sum + v.count, 0);
+      const summary = entries
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 10) // Top 10 restaurants
+        .map(([restaurant, { count, lastError }]) => {
+          const shortError = lastError.includes("500") ? "500" :
+                            lastError.includes("timeout") ? "timeout" :
+                            lastError.slice(0, 30);
+          return `• ${restaurant}: ${count}x (${shortError})`;
+        })
+        .join("\n");
+
+      await notifier.notifyAdmin(
+        `Passive Monitor: ${totalErrors} errors in last 5 min`,
+        summary
+      );
+
+      errorBatch.clear();
+      // Clear error state if we successfully flushed
+      eventBridge.setPassiveMonitorErrorState(false);
+    };
+
+    // Start batch flush timer
+    passiveErrorBatchTimer = setInterval(flushErrorBatch, ERROR_BATCH_INTERVAL_MS);
 
     passiveMonitor = new PassiveMonitorService({
       apiKey: config.RESY_API_KEY,
@@ -239,13 +280,16 @@ async function main(): Promise<void> {
         coordinator.onPassiveSlotsDiscovered(slots, restaurant, date, matchingTargets);
       },
       callbacks: {
-        onPollError: async (restaurant, error) => {
+        onPollError: (restaurant, error) => {
           // Update UI state to show erroring
           eventBridge.setPassiveMonitorErrorState(true);
-          // Send error to Discord webhook
-          const notifier = getNotifier();
-          if (notifier) {
-            await notifier.notifyPassiveMonitorError(restaurant, error);
+          // Batch errors instead of sending individually
+          const existing = errorBatch.get(restaurant);
+          if (existing) {
+            existing.count++;
+            existing.lastError = error;
+          } else {
+            errorBatch.set(restaurant, { count: 1, lastError: error });
           }
         },
         onBlackoutStart: () => {
@@ -298,6 +342,7 @@ async function main(): Promise<void> {
     scheduler.stop();
     scanner.stopAllScans();
     passiveMonitor?.stop();
+    if (passiveErrorBatchTimer) clearInterval(passiveErrorBatchTimer);
     store.stopPeriodicSync();
     await discordBot.stop();
     await closeSupabase();

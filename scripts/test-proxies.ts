@@ -123,7 +123,8 @@ async function main() {
   const { data: proxies, error } = await supabase
     .from("proxies")
     .select("id, url, type, enabled")
-    .eq("enabled", true);
+    .eq("enabled", true)
+    .eq("type", "isp");
 
   if (error) {
     console.error("Failed to fetch proxies:", error.message);
