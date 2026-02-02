@@ -20,6 +20,7 @@ import type {
   FullSubscription,
   PassiveTarget,
   FullPassiveTarget,
+  DayConfig,
 } from "../db/schema";
 import { logger } from "../logger";
 
@@ -560,6 +561,7 @@ class Store {
       time_window_end: string;
       table_types?: string[];
       target_days?: number[] | null;
+      day_configs?: DayConfig[] | null;
     }
   ): Promise<UserSubscription> {
     const supabase = getSupabase();
@@ -572,6 +574,7 @@ class Store {
         ...existing,
         ...data,
         target_days: data.target_days ?? existing.target_days,
+        day_configs: data.day_configs ?? existing.day_configs,
         enabled: true,
         updated_at: new Date(),
       };
@@ -586,6 +589,7 @@ class Store {
             time_window_end: data.time_window_end,
             table_types: data.table_types ?? null,
             target_days: data.target_days ?? null,
+            day_configs: data.day_configs ?? null,
             enabled: true,
           })
           .eq("id", existing.id);
@@ -604,6 +608,7 @@ class Store {
           time_window_end: data.time_window_end,
           table_types: data.table_types ?? null,
           target_days: data.target_days ?? null,
+          day_configs: data.day_configs ?? null,
           enabled: true,
         })
         .select()

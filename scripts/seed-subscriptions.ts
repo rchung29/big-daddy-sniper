@@ -4,8 +4,10 @@
  * DELETES ALL EXISTING SUBSCRIPTIONS first, then creates fresh ones:
  * - Every user subscribed to every active restaurant
  * - Party size: 4
- * - Time window: 6:00 PM - 10:00 PM EST
- * - Target days: Friday (5), Saturday (6), Sunday (0)
+ * - Per-day time windows using day_configs:
+ *   - Friday (5): 6:00 PM - 10:00 PM
+ *   - Saturday (6): 11:30 AM - 10:00 PM
+ *   - Sunday (0): 11:30 AM - 10:00 PM
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -19,11 +21,22 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// DayConfig type for per-day time windows
+interface DayConfig {
+  day: number;    // 0=Sun, 1=Mon, ..., 6=Sat
+  start: string;  // HH:mm format
+  end: string;    // HH:mm format
+}
+
 async function seedSubscriptions() {
   const partySize = 4;
-  const timeWindowStart = "18:00"; // 6:00 PM EST
-  const timeWindowEnd = "22:00";   // 10:00 PM EST
-  const targetDays = [0, 5, 6];    // Sunday, Friday, Saturday
+
+  // Per-day time windows
+  const dayConfigs: DayConfig[] = [
+    { day: 5, start: "18:00", end: "22:00" },  // Friday: 6:00 PM - 10:00 PM
+    { day: 6, start: "11:30", end: "22:00" },  // Saturday: 11:30 AM - 10:00 PM
+    { day: 0, start: "11:30", end: "22:00" },  // Sunday: 11:30 AM - 10:00 PM
+  ];
 
   // Step 1: Delete all existing subscriptions
   console.log("Deleting all existing subscriptions...");
@@ -82,9 +95,7 @@ async function seedSubscriptions() {
     user_id: number;
     restaurant_id: number;
     party_size: number;
-    time_window_start: string;
-    time_window_end: string;
-    target_days: number[];
+    day_configs: DayConfig[];
     enabled: boolean;
   }> = [];
 
@@ -94,9 +105,7 @@ async function seedSubscriptions() {
         user_id: user.id,
         restaurant_id: r.id,
         party_size: partySize,
-        time_window_start: timeWindowStart,
-        time_window_end: timeWindowEnd,
-        target_days: targetDays,
+        day_configs: dayConfigs,
         enabled: true,
       });
     }
@@ -116,8 +125,10 @@ async function seedSubscriptions() {
   console.log("\nSubscriptions created successfully!");
   console.log(`  Users: ${users.length}`);
   console.log(`  Party size: ${partySize}`);
-  console.log(`  Time window: ${timeWindowStart} - ${timeWindowEnd} EST`);
-  console.log(`  Target days: Friday, Saturday, Sunday`);
+  console.log(`  Per-day time windows:`);
+  console.log(`    - Friday: 6:00 PM - 10:00 PM`);
+  console.log(`    - Saturday: 11:30 AM - 10:00 PM`);
+  console.log(`    - Sunday: 11:30 AM - 10:00 PM`);
   console.log(`  Restaurants: ${restaurants.length}`);
   console.log(`  Total subscriptions: ${subscriptions.length}`);
 

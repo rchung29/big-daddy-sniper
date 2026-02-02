@@ -6,7 +6,7 @@
  * Uses in-memory store - no direct DB access
  */
 import { store } from "../store";
-import type { Restaurant, FullSubscription } from "../db/schema";
+import type { Restaurant, FullSubscription, DayConfig } from "../db/schema";
 import { DateTime } from "luxon";
 import { logger } from "../logger";
 
@@ -86,14 +86,39 @@ export function getDayOfWeek(dateStr: string): number {
 }
 
 /**
+ * Get the time window for a specific date from day_configs
+ * Returns the matching DayConfig or null if no config for that day
+ */
+export function getTimeWindowForDate(
+  dayConfigs: DayConfig[] | null | undefined,
+  targetDate: string
+): DayConfig | null {
+  if (!dayConfigs || dayConfigs.length === 0) {
+    return null;
+  }
+
+  const dayOfWeek = getDayOfWeek(targetDate);
+  return dayConfigs.find((config) => config.day === dayOfWeek) ?? null;
+}
+
+/**
  * Check if a subscription should be active for a given target date
- * Returns false if the subscription has target_days set and the date doesn't match
+ * Checks day_configs first, then falls back to legacy target_days
+ * Returns false if the subscription has day restrictions and the date doesn't match
  */
 export function isSubscriptionActiveForDate(
   targetDays: number[] | null,
-  targetDate: string
+  targetDate: string,
+  dayConfigs?: DayConfig[] | null
 ): boolean {
-  // null means any day is fine
+  // If day_configs is present, use it for day filtering
+  if (dayConfigs && dayConfigs.length > 0) {
+    const dayOfWeek = getDayOfWeek(targetDate);
+    return dayConfigs.some((config) => config.day === dayOfWeek);
+  }
+
+  // Fall back to legacy target_days
+  // null or empty means any day is fine
   if (!targetDays || targetDays.length === 0) {
     return true;
   }
@@ -120,22 +145,25 @@ export function calculateReleaseWindows(
       releaseDateTime.getTime() - scanStartSecondsBefore * 1000
     );
 
-    // Filter subscriptions by target_days
+    // Filter subscriptions by day_configs or target_days
     // Each subscription may have a different days_in_advance, so calculate per-subscription
     const activeSubscriptions = allSubscriptions.filter((sub) => {
       const targetDate = calculateTargetDate(sub.days_in_advance);
-      const isActive = isSubscriptionActiveForDate(sub.target_days, targetDate);
+      const isActive = isSubscriptionActiveForDate(sub.target_days, targetDate, sub.day_configs);
 
       if (!isActive) {
         const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const dayOfWeek = getDayOfWeek(targetDate);
+        const configuredDays = sub.day_configs
+          ? sub.day_configs.map(c => dayNames[c.day]).join(", ")
+          : sub.target_days?.map(d => dayNames[d]).join(", ");
         logger.debug(
           {
             user_id: sub.user_id,
             restaurant: sub.restaurant_name,
             targetDate,
             dayOfWeek: dayNames[dayOfWeek],
-            targetDays: sub.target_days?.map(d => dayNames[d]).join(", "),
+            configuredDays,
           },
           "Skipping subscription - target day not in user's preferred days"
         );

@@ -368,6 +368,7 @@ export class PassiveMonitorService {
 
   /**
    * Match passive targets to a specific date based on day-of-week filter
+   * Checks day_configs first, then falls back to legacy target_days
    */
   private matchTargetsToDate(
     target: CalendarTarget,
@@ -384,6 +385,12 @@ export class PassiveMonitorService {
 
     // Filter by day-of-week preference
     return matchingTargets.filter((pt) => {
+      // Check day_configs first (new format)
+      if (pt.day_configs && pt.day_configs.length > 0) {
+        return pt.day_configs.some((config) => config.day === dayOfWeek);
+      }
+
+      // Fall back to legacy target_days
       if (!pt.target_days || pt.target_days.length === 0) {
         return true; // No filter = wants any day
       }

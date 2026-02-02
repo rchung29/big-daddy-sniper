@@ -4,6 +4,16 @@
  */
 
 /**
+ * Per-day time window configuration
+ * Allows different time windows for different days of the week
+ */
+export interface DayConfig {
+  day: number;    // 0=Sun, 1=Mon, ..., 6=Sat
+  start: string;  // HH:mm format
+  end: string;    // HH:mm format
+}
+
+/**
  * Restaurant in the curated library
  */
 export interface Restaurant {
@@ -42,10 +52,11 @@ export interface UserSubscription {
   user_id: number;
   restaurant_id: number;
   party_size: number;
-  time_window_start: string; // HH:mm format
-  time_window_end: string;
+  time_window_start: string; // HH:mm format (legacy, used as fallback)
+  time_window_end: string;   // HH:mm format (legacy, used as fallback)
   table_types: string[] | null; // JSON array
-  target_days: number[] | null; // Days of week: 0=Sun, 1=Mon, ..., 6=Sat (null = any day)
+  target_days: number[] | null; // Days of week: 0=Sun, 1=Mon, ..., 6=Sat (legacy, used as fallback)
+  day_configs: DayConfig[] | null; // Per-day time windows (takes precedence over target_days + time_window_*)
   enabled: boolean;
   created_at: Date;
   updated_at: Date;
@@ -136,10 +147,11 @@ export interface PassiveTarget {
   user_id: number;
   restaurant_id: number;
   party_size: number;
-  target_days: number[] | null; // Days of week: 0=Sun, 1=Mon, ..., 6=Sat (null = any day)
-  time_window_start: string; // HH:mm format
-  time_window_end: string;
+  target_days: number[] | null; // Days of week: 0=Sun, 1=Mon, ..., 6=Sat (legacy, used as fallback)
+  time_window_start: string; // HH:mm format (legacy, used as fallback)
+  time_window_end: string;   // HH:mm format (legacy, used as fallback)
   table_types: string[] | null;
+  day_configs: DayConfig[] | null; // Per-day time windows (takes precedence over target_days + time_window_*)
   enabled: boolean;
   created_at: Date;
   updated_at: Date;

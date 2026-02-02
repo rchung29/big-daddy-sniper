@@ -1,6 +1,6 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test";
 import { DateTime } from "luxon";
-import type { FullPassiveTarget, Restaurant } from "../db/schema";
+import type { FullPassiveTarget, Restaurant, DayConfig } from "../db/schema";
 
 // Mock the store module
 const mockGetFullPassiveTargets = mock((): FullPassiveTarget[] => []);
@@ -68,6 +68,7 @@ describe("PassiveMonitorService", () => {
         time_window_end: "21:00",
         table_types: null,
         target_days: null, // No filter
+        day_configs: null, // No per-day config
         enabled: true,
         created_at: new Date(),
         updated_at: new Date(),
@@ -96,6 +97,7 @@ describe("PassiveMonitorService", () => {
         time_window_end: "21:00",
         table_types: null,
         target_days: [], // Empty = any day
+        day_configs: null,
         enabled: true,
         created_at: new Date(),
         updated_at: new Date(),
@@ -124,6 +126,7 @@ describe("PassiveMonitorService", () => {
         time_window_end: "21:00",
         table_types: null,
         target_days: [0, 6], // Sunday and Saturday
+        day_configs: null, // Using legacy target_days
         enabled: true,
         created_at: new Date(),
         updated_at: new Date(),
@@ -157,6 +160,85 @@ describe("PassiveMonitorService", () => {
 
       expect(target.target_days?.includes(mondayDow)).toBe(false);
     });
+
+    test("target with day_configs takes precedence over target_days", () => {
+      // day_configs says Friday only
+      const dayConfigs: DayConfig[] = [
+        { day: 5, start: "18:00", end: "22:00" },  // Friday only
+      ];
+
+      const target: FullPassiveTarget = {
+        id: 1,
+        user_id: 1,
+        restaurant_id: 1,
+        party_size: 2,
+        time_window_start: "18:00",
+        time_window_end: "21:00",
+        table_types: null,
+        target_days: [0, 1, 2, 3, 4, 5, 6], // All days (legacy)
+        day_configs: dayConfigs, // Friday only (takes precedence)
+        enabled: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+        restaurant_name: "Test Restaurant",
+        venue_id: "123",
+        days_in_advance: 14,
+        discord_id: "user123",
+        resy_auth_token: "token",
+        resy_payment_method_id: 1,
+        preferred_proxy_id: null,
+      };
+
+      // 2025-02-07 is a Friday - should match day_configs
+      const fridayLuxon = DateTime.fromISO("2025-02-07").weekday; // 5 for Friday
+      const fridayDow = fridayLuxon === 7 ? 0 : fridayLuxon; // 5
+      expect(target.day_configs?.some(c => c.day === fridayDow)).toBe(true);
+
+      // 2025-02-08 is a Saturday - in target_days but NOT in day_configs
+      const saturdayLuxon = DateTime.fromISO("2025-02-08").weekday; // 6 for Saturday
+      const saturdayDow = saturdayLuxon === 7 ? 0 : saturdayLuxon; // 6
+      expect(target.day_configs?.some(c => c.day === saturdayDow)).toBe(false);
+    });
+
+    test("day_configs provides per-day time windows", () => {
+      const dayConfigs: DayConfig[] = [
+        { day: 5, start: "18:00", end: "22:00" },  // Friday: 6pm-10pm
+        { day: 6, start: "11:30", end: "22:00" },  // Saturday: 11:30am-10pm
+        { day: 0, start: "11:30", end: "22:00" },  // Sunday: 11:30am-10pm
+      ];
+
+      const target: FullPassiveTarget = {
+        id: 1,
+        user_id: 1,
+        restaurant_id: 1,
+        party_size: 2,
+        time_window_start: "17:00", // Legacy fallback
+        time_window_end: "21:00",
+        table_types: null,
+        target_days: null,
+        day_configs: dayConfigs,
+        enabled: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+        restaurant_name: "Test Restaurant",
+        venue_id: "123",
+        days_in_advance: 14,
+        discord_id: "user123",
+        resy_auth_token: "token",
+        resy_payment_method_id: 1,
+        preferred_proxy_id: null,
+      };
+
+      // Get Friday config
+      const fridayConfig = target.day_configs?.find(c => c.day === 5);
+      expect(fridayConfig?.start).toBe("18:00");
+      expect(fridayConfig?.end).toBe("22:00");
+
+      // Get Saturday config
+      const saturdayConfig = target.day_configs?.find(c => c.day === 6);
+      expect(saturdayConfig?.start).toBe("11:30");
+      expect(saturdayConfig?.end).toBe("22:00");
+    });
   });
 
   describe("target grouping", () => {
@@ -171,6 +253,7 @@ describe("PassiveMonitorService", () => {
           time_window_end: "21:00",
           table_types: null,
           target_days: null,
+          day_configs: null,
           enabled: true,
           created_at: new Date(),
           updated_at: new Date(),
@@ -191,6 +274,7 @@ describe("PassiveMonitorService", () => {
           time_window_end: "22:00",
           table_types: null,
           target_days: null,
+          day_configs: null,
           enabled: true,
           created_at: new Date(),
           updated_at: new Date(),
@@ -211,6 +295,7 @@ describe("PassiveMonitorService", () => {
           time_window_end: "21:00",
           table_types: null,
           target_days: null,
+          day_configs: null,
           enabled: true,
           created_at: new Date(),
           updated_at: new Date(),

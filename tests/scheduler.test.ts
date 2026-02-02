@@ -14,11 +14,13 @@ import {
   calculateTargetDate,
   getNextReleaseDateTime,
   isSubscriptionActiveForDate,
+  getTimeWindowForDate,
+  getDayOfWeek,
   Scheduler,
   type ReleaseWindow,
 } from "../src/services/scheduler";
 import { store } from "../src/store";
-import type { Restaurant, FullSubscription } from "../src/db/schema";
+import type { Restaurant, FullSubscription, DayConfig } from "../src/db/schema";
 
 // ============ Test Data ============
 
@@ -74,6 +76,7 @@ const mockSubscriptions: FullSubscription[] = [
     time_window_end: "21:00",
     table_types: null,
     target_days: null, // Any day
+    day_configs: null, // No per-day config
     enabled: true,
     created_at: new Date(),
     updated_at: new Date(),
@@ -84,6 +87,7 @@ const mockSubscriptions: FullSubscription[] = [
     discord_id: "user1",
     resy_auth_token: "token1",
     resy_payment_method_id: 123,
+    preferred_proxy_id: null,
   },
   {
     id: 2,
@@ -93,7 +97,8 @@ const mockSubscriptions: FullSubscription[] = [
     time_window_start: "19:00",
     time_window_end: "22:00",
     table_types: ["outdoor"],
-    target_days: [5, 6, 0], // Fri, Sat, Sun only
+    target_days: [5, 6, 0], // Fri, Sat, Sun only (legacy)
+    day_configs: null, // Using legacy target_days
     enabled: true,
     created_at: new Date(),
     updated_at: new Date(),
@@ -104,6 +109,7 @@ const mockSubscriptions: FullSubscription[] = [
     discord_id: "user2",
     resy_auth_token: "token2",
     resy_payment_method_id: 456,
+    preferred_proxy_id: null,
   },
   {
     id: 3,
@@ -114,6 +120,7 @@ const mockSubscriptions: FullSubscription[] = [
     time_window_end: "14:00",
     table_types: null,
     target_days: null,
+    day_configs: null,
     enabled: true,
     created_at: new Date(),
     updated_at: new Date(),
@@ -124,6 +131,7 @@ const mockSubscriptions: FullSubscription[] = [
     discord_id: "user1",
     resy_auth_token: "token1",
     resy_payment_method_id: 123,
+    preferred_proxy_id: null,
   },
 ];
 
@@ -407,6 +415,118 @@ describe("Edge cases", () => {
     expect(windows.length).toBe(1);
     expect(windows[0].subscriptions.length).toBe(1);
     expect(windows[0].restaurants.length).toBe(1);
+  });
+});
+
+describe("getTimeWindowForDate", () => {
+  test("should return null for null day_configs", () => {
+    const result = getTimeWindowForDate(null, "2025-02-07"); // Friday
+    expect(result).toBeNull();
+  });
+
+  test("should return null for empty day_configs", () => {
+    const result = getTimeWindowForDate([], "2025-02-07"); // Friday
+    expect(result).toBeNull();
+  });
+
+  test("should return matching config for the day", () => {
+    const dayConfigs: DayConfig[] = [
+      { day: 5, start: "18:00", end: "22:00" },  // Friday
+      { day: 6, start: "11:30", end: "22:00" },  // Saturday
+      { day: 0, start: "11:30", end: "22:00" },  // Sunday
+    ];
+
+    // 2025-02-07 is a Friday
+    const fridayResult = getTimeWindowForDate(dayConfigs, "2025-02-07");
+    expect(fridayResult).toEqual({ day: 5, start: "18:00", end: "22:00" });
+
+    // 2025-02-08 is a Saturday
+    const saturdayResult = getTimeWindowForDate(dayConfigs, "2025-02-08");
+    expect(saturdayResult).toEqual({ day: 6, start: "11:30", end: "22:00" });
+
+    // 2025-02-09 is a Sunday
+    const sundayResult = getTimeWindowForDate(dayConfigs, "2025-02-09");
+    expect(sundayResult).toEqual({ day: 0, start: "11:30", end: "22:00" });
+  });
+
+  test("should return null for day not in configs", () => {
+    const dayConfigs: DayConfig[] = [
+      { day: 5, start: "18:00", end: "22:00" },  // Friday only
+    ];
+
+    // 2025-02-10 is a Monday
+    const result = getTimeWindowForDate(dayConfigs, "2025-02-10");
+    expect(result).toBeNull();
+  });
+});
+
+describe("isSubscriptionActiveForDate with day_configs", () => {
+  test("should use day_configs when present", () => {
+    const dayConfigs: DayConfig[] = [
+      { day: 5, start: "18:00", end: "22:00" },  // Friday
+      { day: 6, start: "11:30", end: "22:00" },  // Saturday
+    ];
+
+    // Friday (2025-02-07) should be active
+    expect(isSubscriptionActiveForDate(null, "2025-02-07", dayConfigs)).toBe(true);
+
+    // Saturday (2025-02-08) should be active
+    expect(isSubscriptionActiveForDate(null, "2025-02-08", dayConfigs)).toBe(true);
+
+    // Sunday (2025-02-09) should NOT be active (not in day_configs)
+    expect(isSubscriptionActiveForDate(null, "2025-02-09", dayConfigs)).toBe(false);
+
+    // Monday (2025-02-10) should NOT be active
+    expect(isSubscriptionActiveForDate(null, "2025-02-10", dayConfigs)).toBe(false);
+  });
+
+  test("should ignore legacy target_days when day_configs is present", () => {
+    const dayConfigs: DayConfig[] = [
+      { day: 5, start: "18:00", end: "22:00" },  // Friday only
+    ];
+    const legacyTargetDays = [0, 1, 2, 3, 4, 5, 6]; // All days
+
+    // Sunday (2025-02-09) - in legacy target_days but NOT in day_configs
+    // Should use day_configs and return false
+    expect(isSubscriptionActiveForDate(legacyTargetDays, "2025-02-09", dayConfigs)).toBe(false);
+
+    // Friday (2025-02-07) - in both
+    expect(isSubscriptionActiveForDate(legacyTargetDays, "2025-02-07", dayConfigs)).toBe(true);
+  });
+
+  test("should fall back to target_days when day_configs is null", () => {
+    const targetDays = [5, 6]; // Friday, Saturday
+
+    // Friday should be active
+    expect(isSubscriptionActiveForDate(targetDays, "2025-02-07", null)).toBe(true);
+
+    // Sunday should NOT be active
+    expect(isSubscriptionActiveForDate(targetDays, "2025-02-09", null)).toBe(false);
+  });
+
+  test("should fall back to target_days when day_configs is empty", () => {
+    const targetDays = [5, 6]; // Friday, Saturday
+
+    // Friday should be active
+    expect(isSubscriptionActiveForDate(targetDays, "2025-02-07", [])).toBe(true);
+
+    // Sunday should NOT be active
+    expect(isSubscriptionActiveForDate(targetDays, "2025-02-09", [])).toBe(false);
+  });
+
+  test("should allow any day when both day_configs and target_days are null/empty", () => {
+    // Monday should be active
+    expect(isSubscriptionActiveForDate(null, "2025-02-10", null)).toBe(true);
+    expect(isSubscriptionActiveForDate([], "2025-02-10", [])).toBe(true);
+  });
+});
+
+describe("getDayOfWeek", () => {
+  test("should return correct day of week", () => {
+    expect(getDayOfWeek("2025-02-07")).toBe(5); // Friday
+    expect(getDayOfWeek("2025-02-08")).toBe(6); // Saturday
+    expect(getDayOfWeek("2025-02-09")).toBe(0); // Sunday
+    expect(getDayOfWeek("2025-02-10")).toBe(1); // Monday
   });
 });
 

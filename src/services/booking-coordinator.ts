@@ -15,6 +15,7 @@
  */
 import type { DiscoveredSlot } from "./scanner";
 import type { Restaurant, FullSubscription, FullPassiveTarget, Proxy } from "../db/schema";
+import { getTimeWindowForDate } from "./scheduler";
 import type { AccountExclusions } from "./account-reservation-checker";
 
 /**
@@ -808,13 +809,27 @@ export class BookingCoordinator {
 
   /**
    * Check if a slot matches a subscription's preferences
+   * Uses day_configs for per-day time windows if available, falls back to legacy time_window_*
    */
   private slotMatchesSubscription(slot: DiscoveredSlot, sub: FullSubscription): boolean {
-    // Check time window
     const slotMinutes = parseSlotTime(slot.slot.time);
-    const startMinutes = this.parseTimeWindow(sub.time_window_start);
-    const endMinutes = this.parseTimeWindow(sub.time_window_end);
 
+    // Get time window for this specific day
+    let startMinutes: number;
+    let endMinutes: number;
+
+    const dayConfig = getTimeWindowForDate(sub.day_configs, slot.targetDate);
+    if (dayConfig) {
+      // Use per-day time window
+      startMinutes = this.parseTimeWindow(dayConfig.start);
+      endMinutes = this.parseTimeWindow(dayConfig.end);
+    } else {
+      // Fall back to legacy global time window
+      startMinutes = this.parseTimeWindow(sub.time_window_start);
+      endMinutes = this.parseTimeWindow(sub.time_window_end);
+    }
+
+    // Check time window
     if (slotMinutes < startMinutes || slotMinutes > endMinutes) {
       return false;
     }
