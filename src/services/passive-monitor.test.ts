@@ -5,13 +5,13 @@ import type { FullPassiveTarget, Restaurant, DayConfig } from "../db/schema";
 // Mock the store module
 const mockGetFullPassiveTargets = mock((): FullPassiveTarget[] => []);
 const mockGetRestaurantById = mock((): Restaurant | undefined => undefined);
-const mockGetDatacenterProxies = mock(() => []);
+const mockGetMonitoringProxies = mock(() => []);
 
 mock.module("../store", () => ({
   store: {
     getFullPassiveTargets: mockGetFullPassiveTargets,
     getRestaurantById: mockGetRestaurantById,
-    getDatacenterProxies: mockGetDatacenterProxies,
+    getMonitoringProxies: mockGetMonitoringProxies,
   },
 }));
 

@@ -1,8 +1,8 @@
 /**
  * Proxy & Booking Integration Tests
  *
- * Tests ISP proxies through the full booking flow to diagnose WAF blocks:
- * 1. Load ISP proxies from database
+ * Tests checkout proxies through the full booking flow to diagnose WAF blocks:
+ * 1. Load checkout proxies from database
  * 2. Test each proxy through find → details → book flow
  * 3. Detect WAF blocks (500 empty body) vs other errors
  * 4. Test with invalid config_id to verify error handling
@@ -19,7 +19,7 @@
 import { test, expect, describe, beforeAll } from "bun:test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ResyClient, ResyAPIError } from "../src/sdk";
-import { IspProxyPool } from "../src/services/isp-proxy-pool";
+import { CheckoutProxyPool } from "../src/services/checkout-proxy-pool";
 import { store } from "../src/store";
 import type { Proxy } from "../src/db/schema";
 
@@ -29,12 +29,12 @@ const VENUE_ID = 5769; // Test venue
 const AUTH_TOKEN = process.env.RESY_AUTH_TOKEN ?? "";
 const PAYMENT_METHOD_ID = parseInt(process.env.RESY_PAYMENT_METHOD_ID ?? "0", 10);
 const PARTY_SIZE = 2;
-const DRY_RUN = true; // Set to false to actually book
+const DRY_RUN = false; // Set to false to actually book
 
 // ============ Test State ============
 
 let supabase: SupabaseClient;
-let ispProxies: Proxy[] = [];
+let checkoutProxies: Proxy[] = [];
 
 // Track results for summary
 interface ProxyTestResult {
@@ -116,22 +116,23 @@ beforeAll(async () => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Load ISP proxies directly from database
+  // Load checkout proxies directly from database
   const { data, error } = await supabase
     .from("proxies")
     .select("*")
-    .eq("type", "isp")
-    .eq("enabled", true);
+    .eq("type", "checkout")
+    .eq("enabled", true)
+    .limit(1);
 
   if (error) {
     throw new Error(`Failed to load proxies: ${error.message}`);
   }
 
-  ispProxies = data ?? [];
-  console.log(`  Loaded ${ispProxies.length} ISP proxies from database\n`);
+  checkoutProxies = data ?? [];
+  console.log(`  Loaded ${checkoutProxies.length} checkout proxies from database\n`);
 
-  if (ispProxies.length === 0) {
-    console.log("  ⚠ No ISP proxies found - tests will be limited\n");
+  if (checkoutProxies.length === 0) {
+    console.log("  ⚠ No checkout proxies found - tests will be limited\n");
   }
 });
 
@@ -222,9 +223,9 @@ describe("Baseline (No Proxy)", () => {
   });
 });
 
-// ============ ISP Proxy Tests ============
+// ============ Checkout Proxy Tests ============
 
-describe("ISP Proxy Tests", () => {
+describe("Checkout Proxy Tests", () => {
   let validConfigId: string | null = null;
   let testDate: string = "";
 
@@ -258,15 +259,15 @@ describe("ISP Proxy Tests", () => {
     }
   });
 
-  test("test each ISP proxy through full flow", async () => {
-    if (ispProxies.length === 0) {
-      console.log("  ⏭ No ISP proxies to test");
+  test("test each checkout proxy through full flow", async () => {
+    if (checkoutProxies.length === 0) {
+      console.log("  ⏭ No checkout proxies to test");
       return;
     }
 
-    console.log(`\n  Testing ${ispProxies.length} ISP proxies...\n`);
+    console.log(`\n  Testing ${checkoutProxies.length} checkout proxies...\n`);
 
-    for (const proxy of ispProxies) {
+    for (const proxy of checkoutProxies) {
       const result: ProxyTestResult = {
         proxyId: proxy.id,
         proxyUrl: formatProxyUrl(proxy.url),
@@ -374,14 +375,14 @@ describe("ISP Proxy Tests", () => {
   }, 120000); // 2 minute timeout for testing all proxies
 
   test("test invalid config_id with each proxy", async () => {
-    if (ispProxies.length === 0) {
-      console.log("  ⏭ No ISP proxies to test");
+    if (checkoutProxies.length === 0) {
+      console.log("  ⏭ No checkout proxies to test");
       return;
     }
 
     console.log(`\n  Testing invalid config_id error handling...\n`);
 
-    for (const proxy of ispProxies) {
+    for (const proxy of checkoutProxies) {
       const client = new ResyClient({
         authToken: AUTH_TOKEN,
         proxyUrl: proxy.url,
@@ -410,19 +411,19 @@ describe("ISP Proxy Tests", () => {
   }, 60000); // 1 minute timeout
 });
 
-// ============ IspProxyPool Unit Tests ============
+// ============ CheckoutProxyPool Unit Tests ============
 
-describe("IspProxyPool Logic", () => {
+describe("CheckoutProxyPool Logic", () => {
   test("should initialize with proxies", async () => {
     // Initialize store first (required for pool)
     // Note: In a real test, we'd mock the store
-    if (ispProxies.length === 0) {
+    if (checkoutProxies.length === 0) {
       console.log("  ⏭ Skipped - no proxies loaded");
       return;
     }
 
     // Create a mock pool for testing logic
-    const pool = new IspProxyPool();
+    const pool = new CheckoutProxyPool();
 
     // Can't fully test without initializing store, but we can test the structure
     const status = pool.getStatus();

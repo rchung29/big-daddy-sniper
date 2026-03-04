@@ -15,27 +15,39 @@ const logger = pino({
   },
 });
 
-// Oxylabs proxy format: host:port:username:password
-const DATACENTER_PROXIES = [
-  // Account 1: testing_ArnUq
-  "dc.oxylabs.io:8001:user-testing_ArnUq-country-US:KFI4Vtl9QD9+5aa",
-  "dc.oxylabs.io:8002:user-testing_ArnUq-country-US:KFI4Vtl9QD9+5aa",
-  "dc.oxylabs.io:8003:user-testing_ArnUq-country-US:KFI4Vtl9QD9+5aa",
-  "dc.oxylabs.io:8004:user-testing_ArnUq-country-US:KFI4Vtl9QD9+5aa",
-  "dc.oxylabs.io:8005:user-testing_ArnUq-country-US:KFI4Vtl9QD9+5aa",
-  // Account 2: testing_tEg3T
-  "dc.oxylabs.io:8001:user-testing_tEg3T-country-US:qp=PuJxRWUz_4j5",
-  "dc.oxylabs.io:8002:user-testing_tEg3T-country-US:qp=PuJxRWUz_4j5",
-  "dc.oxylabs.io:8003:user-testing_tEg3T-country-US:qp=PuJxRWUz_4j5",
-  "dc.oxylabs.io:8004:user-testing_tEg3T-country-US:qp=PuJxRWUz_4j5",
-  "dc.oxylabs.io:8005:user-testing_tEg3T-country-US:qp=PuJxRWUz_4j5",
+// Proxy format: host:port:username:password
+const MONITORING_PROXIES = [
+  "151.246.71.52:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.53:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.54:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.55:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.56:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.57:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.58:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.59:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.60:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.61:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.62:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.63:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.64:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.65:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.66:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.67:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.68:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.69:3128:xyz7777:yp1q60na7nnl6sna",
 ];
 
-const ISP_PROXIES: string[] = [
-  // No ISP proxies to add
+const CHECKOUT_PROXIES: string[] = [
+  "151.246.71.70:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.71:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.72:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.73:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.74:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.75:3128:xyz7777:yp1q60na7nnl6sna",
+  "151.246.71.76:3128:xyz7777:yp1q60na7nnl6sna",
 ];
 
-function parseOxylabsProxy(proxyStr: string): string {
+function parseProxy(proxyStr: string): string {
   // Format: host:port:username:password
   const parts = proxyStr.split(":");
   const host = parts[0];
@@ -75,31 +87,31 @@ async function main() {
   logger.info("All existing proxies deleted");
 
   // Step 2: Build proxy list
-  const newProxies: Array<{ url: string; type: "datacenter" | "isp"; enabled: boolean }> = [];
+  const newProxies: Array<{ url: string; type: "monitoring" | "checkout"; enabled: boolean }> = [];
 
-  // Add datacenter proxies
-  for (const str of DATACENTER_PROXIES) {
-    const proxyUrl = parseOxylabsProxy(str);
+  // Add monitoring proxies
+  for (const str of MONITORING_PROXIES) {
+    const proxyUrl = parseProxy(str);
     newProxies.push({
       url: proxyUrl,
-      type: "datacenter",
+      type: "monitoring",
       enabled: true,
     });
   }
 
-  // Add ISP proxies
-  for (const str of ISP_PROXIES) {
-    const proxyUrl = parseOxylabsProxy(str);
+  // Add checkout proxies
+  for (const str of CHECKOUT_PROXIES) {
+    const proxyUrl = parseProxy(str);
     newProxies.push({
       url: proxyUrl,
-      type: "isp",
+      type: "checkout",
       enabled: true,
     });
   }
 
-  const newDatacenter = newProxies.filter((p) => p.type === "datacenter").length;
-  const newIsp = newProxies.filter((p) => p.type === "isp").length;
-  logger.info({ newDatacenter, newIsp, total: newProxies.length }, "Inserting new proxies...");
+  const newMonitoring = newProxies.filter((p) => p.type === "monitoring").length;
+  const newCheckout = newProxies.filter((p) => p.type === "checkout").length;
+  logger.info({ newMonitoring, newCheckout, total: newProxies.length }, "Inserting new proxies...");
 
   // Step 3: Insert new proxies
   const { error: insertError } = await supabase.from("proxies").insert(newProxies);
@@ -117,12 +129,12 @@ async function main() {
     .select("id, type, enabled")
     .order("id");
 
-  const datacenter = allProxies?.filter((p) => p.type === "datacenter") ?? [];
-  const isp = allProxies?.filter((p) => p.type === "isp") ?? [];
+  const monitoring = allProxies?.filter((p) => p.type === "monitoring") ?? [];
+  const checkout = allProxies?.filter((p) => p.type === "checkout") ?? [];
 
   console.log("\nProxy summary:");
-  console.log(`  Datacenter: ${datacenter.length}`);
-  console.log(`  ISP: ${isp.length}`);
+  console.log(`  Monitoring: ${monitoring.length}`);
+  console.log(`  Checkout: ${checkout.length}`);
   console.log(`  Total: ${allProxies?.length ?? 0}`);
 }
 

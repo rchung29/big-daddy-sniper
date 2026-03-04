@@ -124,7 +124,7 @@ async function main() {
     .from("proxies")
     .select("id, url, type, enabled")
     .eq("enabled", true)
-    .eq("type", "isp");
+    .eq("type", "checkout");
 
   if (error) {
     console.error("Failed to fetch proxies:", error.message);
@@ -136,9 +136,9 @@ async function main() {
     process.exit(0);
   }
 
-  const dcCount = proxies.filter(p => p.type === "datacenter").length;
-  const ispCount = proxies.filter(p => p.type === "isp").length;
-  console.log(`Found ${proxies.length} proxies (${dcCount} datacenter, ${ispCount} ISP)\n`);
+  const monCount = proxies.filter(p => p.type === "monitoring").length;
+  const coCount = proxies.filter(p => p.type === "checkout").length;
+  console.log(`Found ${proxies.length} proxies (${monCount} monitoring, ${coCount} checkout)\n`);
 
   console.log(`Testing ${proxies.length} proxies against: ${selectedVenues.join(", ")}\n`);
   console.log("Expected: 200 = WORKING, 500 empty = BLOCKED (WAF)\n");

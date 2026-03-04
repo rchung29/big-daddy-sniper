@@ -9,7 +9,7 @@ import {
 } from "discord.js";
 import { calculateReleaseWindows } from "../../services/scheduler";
 import { getProxyManager } from "../../services/proxy-manager";
-import { getIspProxyPool } from "../../services/isp-proxy-pool";
+import { getCheckoutProxyPool } from "../../services/checkout-proxy-pool";
 import { store } from "../../store";
 
 export const statusCommand = new SlashCommandBuilder()
@@ -24,8 +24,8 @@ export async function handleStatus(
 
   try {
     const proxyManager = getProxyManager();
-    const datacenterStatus = proxyManager.getStatus();
-    const ispPoolStatus = getIspProxyPool().getStatus();
+    const monitoringStatus = proxyManager.getStatus();
+    const checkoutPoolStatus = getCheckoutProxyPool().getStatus();
     const storeStatus = store.getStatus();
 
     const users = store.getAllUsers();
@@ -51,13 +51,13 @@ export async function handleStatus(
         inline: true,
       },
       {
-        name: "Datacenter Proxies",
-        value: `${datacenterStatus.available} available`,
+        name: "Monitoring Proxies",
+        value: `${monitoringStatus.available} available`,
         inline: true,
       },
       {
-        name: "ISP Proxies",
-        value: `${ispPoolStatus.available}/${ispPoolStatus.total} available (${ispPoolStatus.inUse} in use, ${ispPoolStatus.cooldown} cooldown)`,
+        name: "Checkout Proxies",
+        value: `${checkoutPoolStatus.available}/${checkoutPoolStatus.total} available (${checkoutPoolStatus.inUse} in use, ${checkoutPoolStatus.cooldown} cooldown)`,
         inline: true,
       }
     );

@@ -5,7 +5,7 @@
  *
  * Key Architecture:
  * - Sequential slots per restaurant: Try one slot at a time, stop on success
- * - ISP proxy pool: 6 shared ISP proxies allocated per-restaurant, not per-user
+ * - Checkout proxy pool: shared checkout proxies allocated per-restaurant, not per-user
  * - Error handling: 500 empty → switch proxy, retry; "sold out" → try next slot
  * - No parallel booking requests per user/restaurant combo
  *
@@ -32,13 +32,13 @@ export interface UserBookingResult {
 import { store } from "../store";
 import { ResyClient, ResyAPIError } from "../sdk";
 import { parseSlotTime } from "../filters";
-import { getIspProxyPool, type IspProxyPool } from "./isp-proxy-pool";
+import { getCheckoutProxyPool, type CheckoutProxyPool } from "./checkout-proxy-pool";
 import { logger } from "../logger";
 
 // Maximum retries per slot when hitting WAF blocks
 const MAX_RETRIES_PER_SLOT = 2;
 
-// Timeout waiting for ISP proxy
+// Timeout waiting for checkout proxy
 const PROXY_ACQUIRE_TIMEOUT_MS = 10_000;
 
 /**
@@ -108,8 +108,8 @@ export class BookingCoordinator {
   private onBookingSuccess?: (result: UserBookingResult) => void;
   private onBookingFailed?: (result: UserBookingResult) => void;
 
-  // ISP proxy pool
-  private ispPool: IspProxyPool;
+  // Checkout proxy pool
+  private checkoutPool: CheckoutProxyPool;
 
   // Active processors: "userId:restaurantId:targetDate" → Promise
   private activeProcessors = new Map<string, Promise<InternalBookingResult>>();
@@ -134,15 +134,15 @@ export class BookingCoordinator {
     this.dryRun = config.dryRun ?? process.env.DRY_RUN === "true";
     this.onBookingSuccess = config.onBookingSuccess;
     this.onBookingFailed = config.onBookingFailed;
-    this.ispPool = getIspProxyPool();
+    this.checkoutPool = getCheckoutProxyPool();
   }
 
   /**
    * Initialize the coordinator (call after store is initialized)
    */
   initialize(): void {
-    this.ispPool.initialize();
-    logger.info("Booking coordinator initialized with ISP proxy pool");
+    this.checkoutPool.initialize();
+    logger.info("Booking coordinator initialized with checkout proxy pool");
   }
 
   /**
@@ -402,22 +402,22 @@ export class BookingCoordinator {
         continue;
       }
 
-      // Acquire ISP proxy
+      // Acquire checkout proxy
       logger.debug(
         { userId: user.userId, slotTime: discoveredSlot.slot.time },
-        "Acquiring ISP proxy"
+        "Acquiring checkout proxy"
       );
 
-      const proxy = await this.ispPool.acquire(PROXY_ACQUIRE_TIMEOUT_MS);
+      const proxy = await this.checkoutPool.acquire(PROXY_ACQUIRE_TIMEOUT_MS);
       if (!proxy) {
         logger.warn(
           { userId: user.userId },
-          "Failed to acquire ISP proxy - no proxies available"
+          "Failed to acquire checkout proxy - no proxies available"
         );
         return {
           success: false,
           status: "unknown",
-          errorMessage: "No ISP proxy available",
+          errorMessage: "No checkout proxy available",
         };
       }
 
@@ -454,8 +454,8 @@ export class BookingCoordinator {
         );
 
         if (result.success) {
-          this.ispPool.release(proxy.id);
-          logger.debug({ proxyId: proxy.id }, "Released ISP proxy after success");
+          this.checkoutPool.release(proxy.id);
+          logger.debug({ proxyId: proxy.id }, "Released checkout proxy after success");
 
           // Record success
           this.recordSuccess(user, discoveredSlot, proxy, result.reservationId!);
@@ -466,7 +466,7 @@ export class BookingCoordinator {
         switch (result.status) {
           case "waf_blocked":
             // WAF blocked - mark proxy bad, possibly retry
-            this.ispPool.markBad(proxy.id);
+            this.checkoutPool.markBad(proxy.id);
             retryCount++;
 
             if (retryCount >= MAX_RETRIES_PER_SLOT) {
@@ -489,7 +489,7 @@ export class BookingCoordinator {
 
           case "sold_out":
             // Slot taken - try next (keep slot claimed, no point others trying)
-            this.ispPool.release(proxy.id);
+            this.checkoutPool.release(proxy.id);
             logger.info(
               { userId: user.userId, slotTime: discoveredSlot.slot.time },
               "Slot sold out - trying next"
@@ -501,21 +501,21 @@ export class BookingCoordinator {
 
           case "rate_limited":
             // Rate limited - stop for this user, release slot for others
-            this.ispPool.markBad(proxy.id);
+            this.checkoutPool.markBad(proxy.id);
             this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
             this.recordFailure(user, discoveredSlot, proxy, "Rate limited", "failed");
             return result;
 
           case "auth_failed":
             // Auth failed - stop for this user, release slot for others
-            this.ispPool.release(proxy.id);
+            this.checkoutPool.release(proxy.id);
             this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
             this.recordFailure(user, discoveredSlot, proxy, "Auth failed", "failed");
             return result;
 
           default:
             // Other error - try next slot, release this slot for others
-            this.ispPool.release(proxy.id);
+            this.checkoutPool.release(proxy.id);
             logger.warn(
               { userId: user.userId, slotTime: discoveredSlot.slot.time, status: result.status },
               "Booking failed - trying next slot"
@@ -527,7 +527,7 @@ export class BookingCoordinator {
         }
       } catch (error) {
         // Unexpected error - release proxy and slot, try next
-        this.ispPool.release(proxy.id);
+        this.checkoutPool.release(proxy.id);
         this.releaseSlot(restaurantId, targetDate, slotTime, user.userId);
         const errorMsg = error instanceof Error ? error.message : String(error);
         logger.error(
@@ -887,7 +887,7 @@ export class BookingCoordinator {
     this.authFailedUsers.clear();
     this.accountExclusions = null;
     this.claimedSlots.clear();
-    this.ispPool.reset();
+    this.checkoutPool.reset();
     logger.info("Coordinator state reset for new window");
   }
 
@@ -913,7 +913,7 @@ export class BookingCoordinator {
       rateLimitedUsers: this.rateLimitedUsers.size,
       authFailedUsers: this.authFailedUsers.size,
       claimedSlots: this.claimedSlots.size,
-      proxyPoolStatus: this.ispPool.getStatus(),
+      proxyPoolStatus: this.checkoutPool.getStatus(),
     };
   }
 }

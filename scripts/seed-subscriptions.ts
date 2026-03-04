@@ -5,9 +5,8 @@
  * - Every user subscribed to every active restaurant
  * - Party size: 4
  * - Per-day time windows using day_configs:
- *   - Friday (5): 6:00 PM - 10:00 PM
- *   - Saturday (6): 11:30 AM - 10:00 PM
- *   - Sunday (0): 11:30 AM - 10:00 PM
+ *   - Default restaurants: Fri 7-11 PM, Sat any time, Sun any time
+ *   - Excluded restaurants (IDs 29, 51, 36): any time, any day
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -28,14 +27,28 @@ interface DayConfig {
   end: string;    // HH:mm format
 }
 
+// Restaurant IDs that should be any time, any day
+const ANY_TIME_RESTAURANT_IDS = [29, 51, 36];
+
 async function seedSubscriptions() {
   const partySize = 4;
 
-  // Per-day time windows
-  const dayConfigs: DayConfig[] = [
-    { day: 5, start: "18:00", end: "22:00" },  // Friday: 6:00 PM - 10:00 PM
-    { day: 6, start: "11:30", end: "22:00" },  // Saturday: 11:30 AM - 10:00 PM
-    { day: 0, start: "11:30", end: "22:00" },  // Sunday: 11:30 AM - 10:00 PM
+  // Default: Fri 7-11 PM, Sat any time, Sun any time
+  const defaultDayConfigs: DayConfig[] = [
+    { day: 5, start: "19:00", end: "23:00" },  // Friday: 7:00 PM - 11:00 PM
+    { day: 6, start: "00:00", end: "23:59" },  // Saturday: any time
+    { day: 0, start: "00:00", end: "23:59" },  // Sunday: any time
+  ];
+
+  // Any time, any day
+  const anyTimeDayConfigs: DayConfig[] = [
+    { day: 0, start: "00:00", end: "23:59" },  // Sunday
+    { day: 1, start: "00:00", end: "23:59" },  // Monday
+    { day: 2, start: "00:00", end: "23:59" },  // Tuesday
+    { day: 3, start: "00:00", end: "23:59" },  // Wednesday
+    { day: 4, start: "00:00", end: "23:59" },  // Thursday
+    { day: 5, start: "00:00", end: "23:59" },  // Friday
+    { day: 6, start: "00:00", end: "23:59" },  // Saturday
   ];
 
   // Step 1: Delete all existing subscriptions
@@ -101,11 +114,12 @@ async function seedSubscriptions() {
 
   for (const user of users) {
     for (const r of restaurants) {
+      const isAnyTime = ANY_TIME_RESTAURANT_IDS.includes(r.id);
       subscriptions.push({
         user_id: user.id,
         restaurant_id: r.id,
         party_size: partySize,
-        day_configs: dayConfigs,
+        day_configs: isAnyTime ? anyTimeDayConfigs : defaultDayConfigs,
         enabled: true,
       });
     }
@@ -122,24 +136,30 @@ async function seedSubscriptions() {
     process.exit(1);
   }
 
+  const anyTimeRestaurants = restaurants.filter(r => ANY_TIME_RESTAURANT_IDS.includes(r.id));
+  const defaultRestaurants = restaurants.filter(r => !ANY_TIME_RESTAURANT_IDS.includes(r.id));
+
   console.log("\nSubscriptions created successfully!");
   console.log(`  Users: ${users.length}`);
   console.log(`  Party size: ${partySize}`);
-  console.log(`  Per-day time windows:`);
-  console.log(`    - Friday: 6:00 PM - 10:00 PM`);
-  console.log(`    - Saturday: 11:30 AM - 10:00 PM`);
-  console.log(`    - Sunday: 11:30 AM - 10:00 PM`);
-  console.log(`  Restaurants: ${restaurants.length}`);
   console.log(`  Total subscriptions: ${subscriptions.length}`);
+
+  console.log(`\n  Default restaurants (${defaultRestaurants.length}):`);
+  console.log(`    - Friday: 7:00 PM - 11:00 PM`);
+  console.log(`    - Saturday: any time`);
+  console.log(`    - Sunday: any time`);
+  for (const r of defaultRestaurants) {
+    console.log(`    - ${r.name} (id: ${r.id})`);
+  }
+
+  console.log(`\n  Any time/any day restaurants (${anyTimeRestaurants.length}):`);
+  for (const r of anyTimeRestaurants) {
+    console.log(`    - ${r.name} (id: ${r.id})`);
+  }
 
   console.log("\nUsers subscribed:");
   for (const u of users) {
     console.log(`  - ${u.discord_username ?? `User #${u.id}`}`);
-  }
-
-  console.log("\nRestaurants subscribed:");
-  for (const r of restaurants) {
-    console.log(`  - ${r.name}`);
   }
 }
 

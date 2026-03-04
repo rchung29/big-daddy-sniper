@@ -1,7 +1,7 @@
 /**
  * Proxies Component
  *
- * Displays proxy status for datacenter and ISP pools.
+ * Displays proxy status for monitoring and checkout pools.
  */
 
 import type { ScreenBuffer } from "../buffer";
@@ -9,11 +9,11 @@ import type { Region } from "../layout";
 import { colors, box, pad, renderProgressBar } from "../renderer";
 
 export interface ProxiesData {
-  datacenter: {
+  monitoring: {
     available: number;
     rotationIndex: number;
   };
-  isp: {
+  checkout: {
     available: number;
     inUse: number;
     cooldown: number;
@@ -46,14 +46,14 @@ export function renderProxies(
   let currentRow = startRow + 2;
   const maxContentRows = height - 3;
 
-  // Datacenter proxies
-  const dcLabel = colors.cyan(" DATACENTER");
-  buffer.writeAt(currentRow, startCol, box.vertical + pad(dcLabel, innerWidth) + box.vertical);
+  // Monitoring proxies
+  const monLabel = colors.cyan(" MONITORING");
+  buffer.writeAt(currentRow, startCol, box.vertical + pad(monLabel, innerWidth) + box.vertical);
   currentRow++;
 
   if (currentRow - startRow - 2 < maxContentRows) {
-    const dcAvail = colors.white(` Available: ${data.datacenter.available}`);
-    buffer.writeAt(currentRow, startCol, box.vertical + pad(dcAvail, innerWidth) + box.vertical);
+    const monAvail = colors.white(` Available: ${data.monitoring.available}`);
+    buffer.writeAt(currentRow, startCol, box.vertical + pad(monAvail, innerWidth) + box.vertical);
     currentRow++;
   }
 
@@ -63,21 +63,21 @@ export function renderProxies(
     currentRow++;
   }
 
-  // ISP proxies
+  // Checkout proxies
   if (currentRow - startRow - 2 < maxContentRows) {
-    const ispLabel = colors.cyan(" ISP POOL");
-    buffer.writeAt(currentRow, startCol, box.vertical + pad(ispLabel, innerWidth) + box.vertical);
+    const coLabel = colors.cyan(" CHECKOUT POOL");
+    buffer.writeAt(currentRow, startCol, box.vertical + pad(coLabel, innerWidth) + box.vertical);
     currentRow++;
   }
 
-  // ISP progress bar
+  // Checkout progress bar
   if (currentRow - startRow - 2 < maxContentRows) {
     const barWidth = Math.min(12, innerWidth - 15);
-    const bar = renderProgressBar(data.isp.available, data.isp.total, barWidth);
+    const bar = renderProgressBar(data.checkout.available, data.checkout.total, barWidth);
 
     // Color the bar based on availability
     let coloredBar: string;
-    const ratio = data.isp.total > 0 ? data.isp.available / data.isp.total : 0;
+    const ratio = data.checkout.total > 0 ? data.checkout.available / data.checkout.total : 0;
     if (ratio > 0.5) {
       coloredBar = colors.green(bar);
     } else if (ratio > 0.2) {
@@ -86,16 +86,16 @@ export function renderProxies(
       coloredBar = colors.red(bar);
     }
 
-    const barLine = ` [${coloredBar}] ${data.isp.available}/${data.isp.total}`;
+    const barLine = ` [${coloredBar}] ${data.checkout.available}/${data.checkout.total}`;
     buffer.writeAt(currentRow, startCol, box.vertical + pad(barLine, innerWidth) + box.vertical);
     currentRow++;
   }
 
-  // ISP breakdown
+  // Checkout breakdown
   if (currentRow - startRow - 2 < maxContentRows) {
-    const availPart = colors.green(`Avail: ${data.isp.available}`);
-    const usePart = colors.yellow(`Use: ${data.isp.inUse}`);
-    const cdPart = colors.red(`CD: ${data.isp.cooldown}`);
+    const availPart = colors.green(`Avail: ${data.checkout.available}`);
+    const usePart = colors.yellow(`Use: ${data.checkout.inUse}`);
+    const cdPart = colors.red(`CD: ${data.checkout.cooldown}`);
     const breakdown = ` ${availPart}  ${usePart}  ${cdPart}`;
     buffer.writeAt(currentRow, startCol, box.vertical + pad(breakdown, innerWidth) + box.vertical);
     currentRow++;

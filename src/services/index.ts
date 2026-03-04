@@ -3,7 +3,7 @@
  */
 
 export * from "./proxy-manager";
-export * from "./isp-proxy-pool";
+export * from "./checkout-proxy-pool";
 export * from "./passive-proxy-pool";
 export * from "./scheduler";
 export * from "./scanner";

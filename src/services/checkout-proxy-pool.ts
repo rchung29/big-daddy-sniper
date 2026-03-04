@@ -1,14 +1,14 @@
 /**
- * ISP Proxy Pool Service
+ * Checkout Proxy Pool Service
  *
- * Manages a shared pool of ISP proxies for booking operations.
+ * Manages a shared pool of checkout proxies for booking operations.
  * Key semantics:
  * - acquire(): Get next available proxy, blocks with timeout if none available
  * - release(): Return proxy to pool for reuse
  * - markBad(): Put proxy in cooldown (5 min) after WAF block
  *
  * This pool is shared across all booking operations - proxies are allocated
- * per-restaurant, not per-user, to maximize utilization with limited ISP proxies.
+ * per-restaurant, not per-user, to maximize utilization with limited checkout proxies.
  */
 import { store } from "../store";
 import type { Proxy } from "../db/schema";
@@ -27,11 +27,11 @@ const DEFAULT_ACQUIRE_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 100;
 
 /**
- * ISP Proxy Pool
+ * Checkout Proxy Pool
  *
  * Rate limiting: Enforces MIN_REUSE_DELAY_MS between uses of the same proxy
  */
-export class IspProxyPool {
+export class CheckoutProxyPool {
   private available: Proxy[] = [];
   private inUse = new Map<number, { proxy: Proxy; since: Date }>();
   private cooldown = new Map<number, { proxy: Proxy; until: Date }>();
@@ -39,23 +39,23 @@ export class IspProxyPool {
   private initialized = false;
 
   /**
-   * Initialize the pool with ISP proxies from the store
+   * Initialize the pool with checkout proxies from the store
    */
   initialize(): void {
     if (this.initialized) {
-      logger.warn("ISP proxy pool already initialized");
+      logger.warn("Checkout proxy pool already initialized");
       return;
     }
 
-    const ispProxies = store.getIspProxies();
-    this.available = [...ispProxies];
+    const checkoutProxies = store.getCheckoutProxies();
+    this.available = [...checkoutProxies];
     this.inUse.clear();
     this.cooldown.clear();
     this.initialized = true;
 
     logger.info(
       { count: this.available.length },
-      "ISP proxy pool initialized"
+      "Checkout proxy pool initialized"
     );
   }
 
@@ -63,14 +63,14 @@ export class IspProxyPool {
    * Refresh the pool from the store (call after store sync)
    */
   refresh(): void {
-    const ispProxies = store.getIspProxies();
+    const checkoutProxies = store.getCheckoutProxies();
 
     // Keep track of currently in-use and cooldown proxy IDs
     const inUseIds = new Set(this.inUse.keys());
     const cooldownIds = new Set(this.cooldown.keys());
 
     // Update available list with proxies not in use or cooldown
-    this.available = ispProxies.filter(
+    this.available = checkoutProxies.filter(
       (p) => !inUseIds.has(p.id) && !cooldownIds.has(p.id)
     );
 
@@ -80,7 +80,7 @@ export class IspProxyPool {
         inUse: this.inUse.size,
         cooldown: this.cooldown.size,
       },
-      "ISP proxy pool refreshed"
+      "Checkout proxy pool refreshed"
     );
   }
 
@@ -117,7 +117,7 @@ export class IspProxyPool {
             remainingAvailable: this.available.length,
             inUse: this.inUse.size,
           },
-          "Acquired ISP proxy"
+          "Acquired checkout proxy"
         );
 
         // Mark as used in store (for LRU tracking)
@@ -132,7 +132,7 @@ export class IspProxyPool {
 
     logger.warn(
       { timeoutMs, inUse: this.inUse.size, cooldown: this.cooldown.size },
-      "Timed out waiting for ISP proxy"
+      "Timed out waiting for checkout proxy"
     );
 
     return null;
@@ -157,7 +157,7 @@ export class IspProxyPool {
           available: this.available.length,
           inUse: this.inUse.size,
         },
-        "Released ISP proxy"
+        "Released checkout proxy"
       );
     } else {
       logger.warn({ proxyId }, "Attempted to release proxy not in use");
@@ -184,7 +184,7 @@ export class IspProxyPool {
           available: this.available.length,
           cooldown: this.cooldown.size,
         },
-        "Marked ISP proxy as bad - in cooldown"
+        "Marked checkout proxy as bad - in cooldown"
       );
     } else {
       logger.warn({ proxyId }, "Attempted to mark bad proxy not in use");
@@ -207,7 +207,7 @@ export class IspProxyPool {
             proxyId,
             available: this.available.length,
           },
-          "Restored ISP proxy from cooldown"
+          "Restored checkout proxy from cooldown"
         );
       }
     }
@@ -251,7 +251,7 @@ export class IspProxyPool {
 
     logger.info(
       { available: this.available.length },
-      "ISP proxy pool reset"
+      "Checkout proxy pool reset"
     );
   }
 }
@@ -264,14 +264,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Singleton instance
-let ispProxyPool: IspProxyPool | null = null;
+let checkoutProxyPool: CheckoutProxyPool | null = null;
 
 /**
- * Get the ISP proxy pool singleton
+ * Get the checkout proxy pool singleton
  */
-export function getIspProxyPool(): IspProxyPool {
-  if (!ispProxyPool) {
-    ispProxyPool = new IspProxyPool();
+export function getCheckoutProxyPool(): CheckoutProxyPool {
+  if (!checkoutProxyPool) {
+    checkoutProxyPool = new CheckoutProxyPool();
   }
-  return ispProxyPool;
+  return checkoutProxyPool;
 }

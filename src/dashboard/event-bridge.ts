@@ -343,10 +343,10 @@ export class EventBridge {
   }
 
   /**
-   * Log ISP proxy events
+   * Log checkout proxy events
    */
   logProxyAcquired(proxyId: number, available: number): void {
-    this.log("info", `ISP: Acquired #${proxyId} (${available} avail)`, {
+    this.log("info", `Checkout: Acquired #${proxyId} (${available} avail)`, {
       proxyId,
       available,
     });
@@ -354,7 +354,7 @@ export class EventBridge {
 
   logProxyCooldown(proxyId: number, durationMin: number): void {
     this.state.wafBlocks++;
-    this.log("warn", `ISP: #${proxyId} cooldown ${durationMin}min`, {
+    this.log("warn", `Checkout: #${proxyId} cooldown ${durationMin}min`, {
       proxyId,
       durationMin,
     });
@@ -362,7 +362,7 @@ export class EventBridge {
   }
 
   logProxyRestored(proxyId: number): void {
-    this.log("info", `ISP: #${proxyId} restored from cooldown`, { proxyId });
+    this.log("info", `Checkout: #${proxyId} restored from cooldown`, { proxyId });
   }
 
   /**

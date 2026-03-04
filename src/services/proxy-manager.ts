@@ -1,8 +1,8 @@
 /**
  * Proxy Manager Service
  *
- * Handles datacenter proxy rotation for scanning operations.
- * ISP proxies for booking are managed by the IspProxyPool service.
+ * Handles monitoring proxy rotation for scanning operations.
+ * Checkout proxies for booking are managed by the CheckoutProxyPool service.
  *
  * Uses in-memory store - no direct DB access on hot path.
  */
@@ -14,21 +14,21 @@ import { logger } from "../logger";
 const DEFAULT_RATE_LIMIT_MS = 15 * 60 * 1000;
 
 /**
- * Proxy Manager class for datacenter proxy rotation (scanning only)
+ * Proxy Manager class for monitoring proxy rotation (scanning only)
  */
 export class ProxyManager {
   private rotationIndex = 0;
 
   /**
-   * Get the next datacenter proxy for rotating scan requests
-   * Uses round-robin across available datacenter proxies only
-   * ISP proxies are reserved for booking (managed by IspProxyPool)
+   * Get the next monitoring proxy for rotating scan requests
+   * Uses round-robin across available monitoring proxies only
+   * Checkout proxies are reserved for booking (managed by CheckoutProxyPool)
    */
   getRotatingProxy(): Proxy | null {
-    // Only use datacenter proxies for scanning
-    const proxies = store.getDatacenterProxies();
+    // Only use monitoring proxies for scanning
+    const proxies = store.getMonitoringProxies();
     if (proxies.length === 0) {
-      logger.warn("No available datacenter proxies for rotation");
+      logger.warn("No available monitoring proxies for rotation");
       return null;
     }
 
@@ -41,8 +41,8 @@ export class ProxyManager {
     store.markProxyUsed(proxy.id);
 
     logger.debug(
-      { proxyId: proxy.id, type: "datacenter", index: this.rotationIndex - 1, total: proxies.length },
-      "Selected rotating datacenter proxy for scanning"
+      { proxyId: proxy.id, type: "monitoring", index: this.rotationIndex - 1, total: proxies.length },
+      "Selected rotating monitoring proxy for scanning"
     );
 
     return proxy;
@@ -65,10 +65,10 @@ export class ProxyManager {
   }
 
   /**
-   * Get count of available datacenter proxies
+   * Get count of available monitoring proxies
    */
   getAvailableCount(): number {
-    return store.getDatacenterProxies().length;
+    return store.getMonitoringProxies().length;
   }
 
   /**

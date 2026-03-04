@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     }),
   });
 
-  // Initialize coordinator (sets up ISP proxy pool)
+  // Initialize coordinator (sets up checkout proxy pool)
   coordinator.initialize();
 
   // Initialize scanner with push-based callbacks
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
     }),
   });
 
-  // Initialize account reservation checker (uses datacenter proxies)
+  // Initialize account reservation checker (uses monitoring proxies)
   const proxyManager = getProxyManager();
   const reservationChecker = getAccountReservationChecker(proxyManager);
 
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
   scheduler.start();
 
   // Initialize passive monitor if enabled
-  // Uses datacenter proxies for calendar polling, pauses during release windows
+  // Uses monitoring proxies for calendar polling, pauses during release windows
   let passiveMonitor: PassiveMonitorService | null = null;
   let passiveErrorBatchTimer: Timer | null = null;
   if (config.PASSIVE_MONITOR_ENABLED) {
@@ -309,7 +309,7 @@ async function main(): Promise<void> {
         pollIntervalMs: config.PASSIVE_POLL_INTERVAL_MS,
         blackoutMinutes: config.PASSIVE_BLACKOUT_MINUTES,
       },
-      "Passive monitor started (using datacenter proxies)"
+      "Passive monitor started (using monitoring proxies)"
     );
   }
 

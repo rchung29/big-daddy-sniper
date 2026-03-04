@@ -6,7 +6,7 @@
  * attempts since Resy may return the existing reservation instead of creating a new one.
  *
  * Design principles:
- * - Uses datacenter proxies (not ISP) to preserve ISP pool for booking
+ * - Uses monitoring proxies (not checkout) to preserve checkout pool for booking
  * - Fetches 5 accounts in parallel to avoid rate limiting
  * - Fails open: if fetch fails, allow booking attempt anyway
  */
@@ -201,7 +201,7 @@ export class AccountReservationChecker {
   private async fetchUserReservations(
     sub: FullSubscription
   ): Promise<ExistingReservation[]> {
-    // Get datacenter proxy for this request
+    // Get monitoring proxy for this request
     const proxy = this.proxyManager.getRotatingProxy();
 
     const client = new ResyClient({

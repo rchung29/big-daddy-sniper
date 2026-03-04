@@ -4,7 +4,7 @@
  * Read-only dashboard displaying:
  * - Upcoming schedule groups with restaurants
  * - Account list
- * - Proxy status (datacenter + ISP)
+ * - Proxy status (monitoring + checkout)
  * - Live action log
  *
  * Uses raw ANSI escape codes for maximum performance.
@@ -37,7 +37,7 @@ import { renderLog, type LogData } from "./components/log";
 import { store } from "../store";
 import { calculateReleaseWindows } from "../services/scheduler";
 import { getProxyManager } from "../services/proxy-manager";
-import { getIspProxyPool } from "../services/isp-proxy-pool";
+import { getCheckoutProxyPool } from "../services/checkout-proxy-pool";
 import { getBookingCoordinator } from "../services/booking-coordinator";
 
 /**
@@ -239,11 +239,11 @@ export class Dashboard {
    */
   private getProxiesData(): ProxiesData {
     const proxyManager = getProxyManager();
-    const ispPool = getIspProxyPool();
+    const checkoutPool = getCheckoutProxyPool();
 
     return {
-      datacenter: proxyManager.getStatus(),
-      isp: ispPool.getStatus(),
+      monitoring: proxyManager.getStatus(),
+      checkout: checkoutPool.getStatus(),
     };
   }
 

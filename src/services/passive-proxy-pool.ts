@@ -2,33 +2,33 @@
  * Passive Proxy Pool
  *
  * Simple round-robin proxy selection for passive monitoring.
- * Uses datacenter proxies automatically - separate from ISP proxies used for booking.
+ * Uses monitoring proxies automatically - separate from checkout proxies used for booking.
  */
 import { store } from "../store";
 import type { Proxy } from "../db/schema";
 import { logger } from "../logger";
 
 /**
- * Passive Proxy Pool - round-robin selection using datacenter proxies
+ * Passive Proxy Pool - round-robin selection using monitoring proxies
  */
 export class PassiveProxyPool {
   private proxies: Proxy[] = [];
   private currentIndex = 0;
 
   /**
-   * Initialize the pool by loading datacenter proxies from the store
+   * Initialize the pool by loading monitoring proxies from the store
    */
   initialize(): void {
-    this.proxies = store.getDatacenterProxies();
+    this.proxies = store.getMonitoringProxies();
 
     if (this.proxies.length === 0) {
       logger.warn(
-        "No datacenter proxies found for passive monitoring - will run without proxies"
+        "No monitoring proxies found for passive monitoring - will run without proxies"
       );
     } else {
       logger.info(
         { count: this.proxies.length, ids: this.proxies.map((p) => p.id) },
-        "Passive proxy pool initialized with datacenter proxies"
+        "Passive proxy pool initialized with monitoring proxies"
       );
     }
   }
@@ -52,7 +52,7 @@ export class PassiveProxyPool {
    * Refresh the pool from the store (call after store sync)
    */
   refresh(): void {
-    this.proxies = store.getDatacenterProxies();
+    this.proxies = store.getMonitoringProxies();
 
     // Reset index if it's out of bounds
     if (this.currentIndex >= this.proxies.length) {

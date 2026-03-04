@@ -656,9 +656,9 @@ class Store {
 
   /**
    * Get available proxies filtered by type
-   * @param type - 'datacenter' | 'isp' | undefined (all types)
+   * @param type - 'monitoring' | 'checkout' | undefined (all types)
    */
-  getAvailableProxies(type?: "datacenter" | "isp"): Proxy[] {
+  getAvailableProxies(type?: "monitoring" | "checkout"): Proxy[] {
     const now = new Date();
     return this.getAllProxies()
       .filter((p) => {
@@ -676,17 +676,17 @@ class Store {
   }
 
   /**
-   * Get available datacenter proxies (for scanning)
+   * Get available monitoring proxies (for scanning)
    */
-  getDatacenterProxies(): Proxy[] {
-    return this.getAvailableProxies("datacenter");
+  getMonitoringProxies(): Proxy[] {
+    return this.getAvailableProxies("monitoring");
   }
 
   /**
-   * Get available ISP proxies (for booking)
+   * Get available checkout proxies (for booking)
    */
-  getIspProxies(): Proxy[] {
-    return this.getAvailableProxies("isp");
+  getCheckoutProxies(): Proxy[] {
+    return this.getAvailableProxies("checkout");
   }
 
   markProxyUsed(proxyId: number): void {

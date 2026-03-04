@@ -1,5 +1,5 @@
 /**
- * Test booking at Penny (venue_id=79460) with ISP proxy
+ * Test booking at Penny (venue_id=79460) with checkout proxy
  *
  * Run with: bun scripts/test-book-penny.ts
  */
@@ -13,10 +13,10 @@ const PARTY_SIZE = 2;
 
 async function main() {
   console.log("=".repeat(60));
-  console.log("TEST BOOKING AT PENNY (venue_id=79460) WITH ISP PROXY");
+  console.log("TEST BOOKING AT PENNY (venue_id=79460) WITH CHECKOUT PROXY");
   console.log("=".repeat(60));
 
-  // Load ISP proxy from database
+  // Load checkout proxy from database
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -25,12 +25,12 @@ async function main() {
   const { data: proxies } = await supabase
     .from("proxies")
     .select("*")
-    .eq("type", "isp")
+    .eq("type", "checkout")
     .eq("enabled", true)
     .limit(1);
 
   if (!proxies || proxies.length === 0) {
-    console.error("No ISP proxies found");
+    console.error("No checkout proxies found");
     process.exit(1);
   }
 
