@@ -38,8 +38,8 @@ import { logger } from "../logger";
 // Maximum retries per slot when hitting WAF blocks
 const MAX_RETRIES_PER_SLOT = 2;
 
-// Timeout waiting for checkout proxy
-const PROXY_ACQUIRE_TIMEOUT_MS = 10_000;
+// Timeout waiting for checkout proxy (booking requests can take up to 10s)
+const PROXY_ACQUIRE_TIMEOUT_MS = 30_000;
 
 /**
  * Booking status types for internal tracking

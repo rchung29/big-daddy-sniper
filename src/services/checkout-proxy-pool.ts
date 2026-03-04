@@ -20,11 +20,11 @@ const COOLDOWN_DURATION_MS = 5 * 60 * 1000;
 // Minimum delay between reusing the same proxy: 2 seconds
 const MIN_REUSE_DELAY_MS = 2000;
 
-// Default acquire timeout: 10 seconds
-const DEFAULT_ACQUIRE_TIMEOUT_MS = 10_000;
+// Default acquire timeout: 30 seconds (booking requests can take up to 10s)
+const DEFAULT_ACQUIRE_TIMEOUT_MS = 30_000;
 
 // Poll interval when waiting for proxy
-const POLL_INTERVAL_MS = 100;
+const POLL_INTERVAL_MS = 10;
 
 /**
  * Checkout Proxy Pool
