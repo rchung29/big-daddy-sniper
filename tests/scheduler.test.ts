@@ -13,14 +13,16 @@ import {
   calculateReleaseWindows,
   calculateTargetDate,
   getNextReleaseDateTime,
+  getReleaseWindowId,
   isSubscriptionActiveForDate,
   getTimeWindowForDate,
   getDayOfWeek,
   Scheduler,
-  type ReleaseWindow,
 } from "../src/services/scheduler";
 import { store } from "../src/store";
 import type { Restaurant, FullSubscription, DayConfig } from "../src/db/schema";
+
+const REFERENCE_DATE = new Date("2025-01-25T12:00:00-05:00");
 
 // ============ Test Data ============
 
@@ -84,6 +86,7 @@ const mockSubscriptions: FullSubscription[] = [
     venue_id: "1001",
     days_in_advance: 30,
     release_time: "10:00",
+    release_time_zone: "America/New_York",
     discord_id: "user1",
     resy_auth_token: "token1",
     resy_payment_method_id: 123,
@@ -106,6 +109,7 @@ const mockSubscriptions: FullSubscription[] = [
     venue_id: "1002",
     days_in_advance: 14,
     release_time: "10:00",
+    release_time_zone: "America/New_York",
     discord_id: "user2",
     resy_auth_token: "token2",
     resy_payment_method_id: 456,
@@ -128,6 +132,7 @@ const mockSubscriptions: FullSubscription[] = [
     venue_id: "1003",
     days_in_advance: 7,
     release_time: "09:00",
+    release_time_zone: "America/New_York",
     discord_id: "user1",
     resy_auth_token: "token1",
     resy_payment_method_id: 123,
@@ -138,15 +143,7 @@ const mockSubscriptions: FullSubscription[] = [
 // ============ Mock Store ============
 
 function setupMockStore(subscriptions: FullSubscription[], restaurants: Restaurant[]) {
-  // Mock store.getSubscriptionsGroupedByReleaseTime
-  const grouped = new Map<string, FullSubscription[]>();
-  for (const sub of subscriptions) {
-    const existing = grouped.get(sub.release_time) ?? [];
-    existing.push(sub);
-    grouped.set(sub.release_time, existing);
-  }
-
-  spyOn(store, "getSubscriptionsGroupedByReleaseTime").mockReturnValue(grouped);
+  spyOn(store, "getFullSubscriptions").mockReturnValue(subscriptions);
 
   // Mock store.getRestaurantById
   const restaurantMap = new Map(restaurants.map((r) => [r.id, r]));
@@ -160,31 +157,34 @@ describe("calculateReleaseWindows", () => {
     setupMockStore(mockSubscriptions, mockRestaurants);
   });
 
-  test("should group subscriptions by release time", () => {
-    const windows = calculateReleaseWindows();
+  test("should group subscriptions by exact target date, not just release time", () => {
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
-    // Should have 2 windows: 09:00 and 10:00
-    expect(windows.length).toBe(2);
+    expect(windows.length).toBe(3);
 
-    const times = windows.map((w) => w.releaseTime).sort();
-    expect(times).toEqual(["09:00", "10:00"]);
+    expect(windows.map((w) => w.id)).toEqual([
+      getReleaseWindowId("09:00", "2025-02-02"),
+      getReleaseWindowId("10:00", "2025-02-09"),
+      getReleaseWindowId("10:00", "2025-02-25"),
+    ]);
   });
 
-  test("should include all subscriptions for a release time", () => {
-    const windows = calculateReleaseWindows();
+  test("should split same-time subscriptions when they target different dates", () => {
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
-    const tenAmWindow = windows.find((w) => w.releaseTime === "10:00");
-    expect(tenAmWindow).toBeDefined();
+    const tenAmWindows = windows.filter((w) => w.releaseTime === "10:00");
+    expect(tenAmWindows.length).toBe(2);
+    expect(tenAmWindows.map((w) => w.targetDate).sort()).toEqual(["2025-02-09", "2025-02-25"]);
 
-    // 10:00 window should have subscriptions from Restaurant A and B
-    // But subscription 2 has target_days filter - may or may not be included
-    // depending on current day
-    expect(tenAmWindow!.subscriptions.length).toBeGreaterThanOrEqual(1);
+    for (const window of tenAmWindows) {
+      expect(window.subscriptions.length).toBe(1);
+      expect(window.restaurants.length).toBe(1);
+    }
   });
 
   test("should calculate correct scan start time", () => {
     const scanStartSecondsBefore = 45;
-    const windows = calculateReleaseWindows(scanStartSecondsBefore);
+    const windows = calculateReleaseWindows(scanStartSecondsBefore, REFERENCE_DATE);
 
     for (const window of windows) {
       const diff = window.releaseDateTime.getTime() - window.scanStartDateTime.getTime();
@@ -193,7 +193,7 @@ describe("calculateReleaseWindows", () => {
   });
 
   test("should sort windows by scan start time", () => {
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     for (let i = 1; i < windows.length; i++) {
       expect(windows[i].scanStartDateTime.getTime()).toBeGreaterThanOrEqual(
@@ -203,7 +203,7 @@ describe("calculateReleaseWindows", () => {
   });
 
   test("should include unique restaurants per window", () => {
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     for (const window of windows) {
       const restaurantIds = window.restaurants.map((r) => r.id);
@@ -213,31 +213,17 @@ describe("calculateReleaseWindows", () => {
   });
 
   test("should filter subscriptions by target_days", () => {
-    // Create subscriptions where one is filtered out
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-
-    // Subscription with target_days that excludes today
-    const excludedDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => {
-      // Calculate what day the target date lands on
-      const targetDate = calculateTargetDate(14);
-      const targetDay = new Date(targetDate + "T12:00:00").getDay();
-      return d !== targetDay;
-    });
-
     const filteredSubscriptions: FullSubscription[] = [
       {
         ...mockSubscriptions[0],
-        target_days: excludedDays.slice(0, 3), // Days that don't match target
+        target_days: [0], // Jan 26 + 30 days = 2025-02-25 (Tuesday), so this should be filtered out
       },
     ];
 
     setupMockStore(filteredSubscriptions, mockRestaurants);
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
-    // Window may be empty if target_days don't match
-    // This is expected behavior
-    expect(windows).toBeDefined();
+    expect(windows).toEqual([]);
   });
 });
 
@@ -293,9 +279,9 @@ describe("Scheduler class", () => {
     const scheduledKeys = scheduler.getScheduledWindows();
 
     expect(Array.isArray(scheduledKeys)).toBe(true);
-    // Keys should be in format "HH:mm-YYYY-MM-DD"
+    // Keys should be in format "timezone:HH:mm:YYYY-MM-DD"
     for (const key of scheduledKeys) {
-      expect(key).toMatch(/^\d{2}:\d{2}-\d{4}-\d{2}-\d{2}$/);
+      expect(key).toMatch(/^America\/New_York:\d{2}:\d{2}:\d{4}-\d{2}-\d{2}$/);
     }
   });
 
@@ -355,11 +341,16 @@ describe("ReleaseWindow structure", () => {
   });
 
   test("should have all required fields", () => {
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     for (const window of windows) {
+      expect(window.id).toBeDefined();
+      expect(typeof window.id).toBe("string");
+
       expect(window.releaseTime).toBeDefined();
       expect(typeof window.releaseTime).toBe("string");
+
+      expect(window.releaseTimeZone).toBe("America/New_York");
 
       expect(window.releaseDateTime).toBeDefined();
       expect(window.releaseDateTime instanceof Date).toBe(true);
@@ -380,12 +371,16 @@ describe("ReleaseWindow structure", () => {
   });
 
   test("targetDate should be calculated from days_in_advance", () => {
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     for (const window of windows) {
       // Each subscription's target date should be based on its days_in_advance
       const firstSub = window.subscriptions[0];
-      const expectedDate = calculateTargetDate(firstSub.days_in_advance);
+      const expectedDate = calculateTargetDate(
+        firstSub.days_in_advance,
+        window.releaseDateTime,
+        firstSub.release_time_zone
+      );
       expect(window.targetDate).toBe(expectedDate);
     }
   });
@@ -394,13 +389,13 @@ describe("ReleaseWindow structure", () => {
 describe("Edge cases", () => {
   test("should handle empty subscriptions", () => {
     setupMockStore([], mockRestaurants);
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
     expect(windows).toEqual([]);
   });
 
   test("should handle subscriptions with missing restaurants", () => {
     setupMockStore(mockSubscriptions, []); // No restaurants
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     // Should still work but restaurants array will be empty
     for (const window of windows) {
@@ -410,7 +405,7 @@ describe("Edge cases", () => {
 
   test("should handle single subscription", () => {
     setupMockStore([mockSubscriptions[0]], [mockRestaurants[0]]);
-    const windows = calculateReleaseWindows();
+    const windows = calculateReleaseWindows(45, REFERENCE_DATE);
 
     expect(windows.length).toBe(1);
     expect(windows[0].subscriptions.length).toBe(1);

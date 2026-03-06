@@ -18,8 +18,6 @@ import type {
   BookingAttempt,
   BookingError,
   FullSubscription,
-  PassiveTarget,
-  FullPassiveTarget,
   DayConfig,
 } from "../db/schema";
 import { logger } from "../logger";
@@ -39,7 +37,6 @@ class Store {
   private users = new Map<number, User>();
   private usersByDiscordId = new Map<string, User>();
   private subscriptions = new Map<number, UserSubscription>();
-  private passiveTargets = new Map<number, PassiveTarget>();
   private proxies = new Map<number, Proxy>();
 
   // Sync state
@@ -130,19 +127,6 @@ class Store {
     this.subscriptions.clear();
     for (const s of subscriptions ?? []) {
       this.subscriptions.set(s.id, s);
-    }
-
-    // Load passive targets
-    const { data: passiveTargets, error: passiveError } = await supabase
-      .from("passive_targets")
-      .select("*")
-      .eq("enabled", true);
-
-    if (passiveError) throw new Error(`Failed to load passive targets: ${passiveError.message}`);
-
-    this.passiveTargets.clear();
-    for (const p of passiveTargets ?? []) {
-      this.passiveTargets.set(p.id, p);
     }
 
     // Load proxies
@@ -249,7 +233,7 @@ class Store {
   /**
    * Set callback for getting next release times (called by scheduler)
    */
-  setReleasTimeCallback(callback: () => Date[]): void {
+  setReleaseTimesProvider(callback: () => Date[]): void {
     this.getNextReleaseTimes = callback;
   }
 
@@ -268,22 +252,6 @@ class Store {
 
   getRestaurantById(id: number): Restaurant | undefined {
     return this.restaurants.get(id);
-  }
-
-  getRestaurantByVenueId(venueId: string): Restaurant | undefined {
-    return this.restaurantsByVenueId.get(venueId);
-  }
-
-  getRestaurantsByReleaseTime(releaseTime: string): Restaurant[] {
-    return this.getAllRestaurants().filter((r) => r.release_time === releaseTime);
-  }
-
-  getUniqueReleaseTimes(): string[] {
-    const times = new Set<string>();
-    for (const r of this.restaurants.values()) {
-      times.add(r.release_time);
-    }
-    return Array.from(times).sort();
   }
 
   searchRestaurantsByName(query: string): Restaurant[] {
@@ -435,10 +403,6 @@ class Store {
     return this.getAllSubscriptions().filter((s) => s.user_id === userId);
   }
 
-  getSubscriptionsByRestaurant(restaurantId: number): UserSubscription[] {
-    return this.getAllSubscriptions().filter((s) => s.restaurant_id === restaurantId);
-  }
-
   getSubscriptionByUserAndRestaurant(
     userId: number,
     restaurantId: number
@@ -483,65 +447,7 @@ class Store {
         venue_id: restaurant.venue_id,
         days_in_advance: restaurant.days_in_advance,
         release_time: restaurant.release_time,
-        discord_id: user.discord_id,
-        resy_auth_token: user.resy_auth_token,
-        resy_payment_method_id: user.resy_payment_method_id,
-        preferred_proxy_id: user.preferred_proxy_id,
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Get subscriptions grouped by release time
-   */
-  getSubscriptionsGroupedByReleaseTime(): Map<string, FullSubscription[]> {
-    const grouped = new Map<string, FullSubscription[]>();
-    const fullSubs = this.getFullSubscriptions();
-
-    for (const sub of fullSubs) {
-      const existing = grouped.get(sub.release_time) ?? [];
-      existing.push(sub);
-      grouped.set(sub.release_time, existing);
-    }
-
-    return grouped;
-  }
-
-  // ============ Passive Target Operations ============
-
-  /**
-   * Get all passive targets
-   */
-  getAllPassiveTargets(): PassiveTarget[] {
-    return Array.from(this.passiveTargets.values());
-  }
-
-  /**
-   * Get all active passive targets with full details (for passive monitor)
-   */
-  getFullPassiveTargets(): FullPassiveTarget[] {
-    const result: FullPassiveTarget[] = [];
-
-    for (const target of this.passiveTargets.values()) {
-      const user = this.users.get(target.user_id);
-      const restaurant = this.restaurants.get(target.restaurant_id);
-
-      if (
-        !user ||
-        !restaurant ||
-        !user.resy_auth_token ||
-        !user.resy_payment_method_id
-      ) {
-        continue;
-      }
-
-      result.push({
-        ...target,
-        venue_id: restaurant.venue_id,
-        restaurant_name: restaurant.name,
-        days_in_advance: restaurant.days_in_advance,
+        release_time_zone: restaurant.release_time_zone,
         discord_id: user.discord_id,
         resy_auth_token: user.resy_auth_token,
         resy_payment_method_id: user.resy_payment_method_id,
@@ -648,10 +554,6 @@ class Store {
 
   getAllProxies(): Proxy[] {
     return Array.from(this.proxies.values());
-  }
-
-  getProxyById(id: number): Proxy | undefined {
-    return this.proxies.get(id);
   }
 
   /**
@@ -771,16 +673,6 @@ class Store {
     });
   }
 
-  /**
-   * Check if user has successful booking (queries memory of recent bookings - not implemented yet)
-   * For now, always returns false to allow booking attempts
-   */
-  hasSuccessfulBooking(_userId: number, _restaurantId: number, _targetDate: string): boolean {
-    // TODO: Track recent successful bookings in memory if needed
-    // For now, let the booking attempt happen and Resy will reject duplicates
-    return false;
-  }
-
   // ============ Slot Snapshot Operations (write-only, fire-and-forget) ============
 
   /**
@@ -816,7 +708,6 @@ class Store {
       restaurants: number;
       users: number;
       subscriptions: number;
-      passiveTargets: number;
       proxies: number;
     };
   } {
@@ -827,7 +718,6 @@ class Store {
         restaurants: this.restaurants.size,
         users: this.users.size,
         subscriptions: this.subscriptions.size,
-        passiveTargets: this.passiveTargets.size,
         proxies: this.proxies.size,
       },
     };

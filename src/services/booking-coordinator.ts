@@ -14,7 +14,7 @@
  * - Successful bookings: Don't keep trying after success
  */
 import type { DiscoveredSlot } from "./scanner";
-import type { Restaurant, FullSubscription, FullPassiveTarget, Proxy } from "../db/schema";
+import type { Restaurant, FullSubscription, Proxy } from "../db/schema";
 import { getTimeWindowForDate } from "./scheduler";
 import type { AccountExclusions } from "./account-reservation-checker";
 
@@ -218,39 +218,7 @@ export class BookingCoordinator {
   }
 
   /**
-   * Handle discovered slots from passive monitor - pre-filtered by day-of-week
-   * This accepts pre-matched passive targets that already passed day-of-week filter
-   */
-  onPassiveSlotsDiscovered(
-    slots: DiscoveredSlot[],
-    restaurant: Restaurant,
-    date: string,
-    matchingTargets: FullPassiveTarget[]
-  ): void {
-    if (slots.length === 0) return;
-
-    logger.info(
-      {
-        restaurant: restaurant.name,
-        date,
-        slotsFound: slots.length,
-        matchingTargets: matchingTargets.length,
-        slots: slots.map((s) => ({ time: s.slot.time, type: s.slot.type })),
-      },
-      "Coordinator received slots from passive monitor"
-    );
-
-    if (matchingTargets.length === 0) {
-      logger.warn({ restaurant: restaurant.name }, "No matching targets for passive slots");
-      return;
-    }
-
-    // FullPassiveTarget has the same booking-relevant fields as FullSubscription
-    this.processSlots(slots, restaurant, matchingTargets as unknown as FullSubscription[]);
-  }
-
-  /**
-   * Process slots for a set of subscriptions (shared by scanner and passive monitor)
+   * Process slots for a set of subscriptions for a single restaurant/date window.
    */
   private processSlots(
     slots: DiscoveredSlot[],
@@ -354,12 +322,24 @@ export class BookingCoordinator {
           );
 
           this.onBookingSuccess?.(userResult);
-        } else if (result.status === "rate_limited") {
+          return;
+        }
+
+        const userResult: UserBookingResult = {
+          userId,
+          discordId: sub.discord_id,
+          success: false,
+          errorMessage: result.errorMessage,
+        };
+
+        if (result.status === "rate_limited") {
           this.rateLimitedUsers.add(userId);
           logger.warn({ userId }, "User rate limited - stopping attempts");
+          this.onBookingFailed?.(userResult);
         } else if (result.status === "auth_failed") {
           this.authFailedUsers.add(userId);
           logger.error({ userId }, "User auth failed - needs to re-register");
+          this.onBookingFailed?.(userResult);
         }
       });
     }

@@ -57,14 +57,6 @@ export class ProxyManager {
   }
 
   /**
-   * Clear rate limit on a proxy
-   */
-  clearRateLimit(proxyId: number): void {
-    store.clearProxyRateLimit(proxyId);
-    logger.info({ proxyId }, "Cleared rate limit on proxy");
-  }
-
-  /**
    * Get count of available monitoring proxies
    */
   getAvailableCount(): number {

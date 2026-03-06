@@ -1,5 +1,5 @@
 /**
- * Proxy & Booking Integration Tests
+ * Proxy & Booking Live Integration Tests
  *
  * Tests checkout proxies through the full booking flow to diagnose WAF blocks:
  * 1. Load checkout proxies from database
@@ -8,7 +8,7 @@
  * 4. Test with invalid config_id to verify error handling
  *
  * USAGE:
- *   bun test tests/proxy-booking.test.ts
+ *   bun test tests/live/proxy-booking.live.ts
  *
  * REQUIRED ENV VARS:
  *   - RESY_AUTH_TOKEN: Your Resy auth token

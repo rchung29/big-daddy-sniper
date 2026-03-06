@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --hot run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "test:live": "bun test tests/live/integration.live.ts tests/live/proxy-booking.live.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -19,7 +20,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",
     "axios": "^1.13.3",
-    "discord.js": "^14.25.1",
     "https-proxy-agent": "^7.0.6",
     "luxon": "^3.7.2",
     "pino": "^10.3.0",

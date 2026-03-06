@@ -1,16 +1,23 @@
 # big-daddy-sniper
 
-To install dependencies:
-
 ```bash
 bun install
 ```
 
-To run:
+Run the app:
 
 ```bash
-bun run index.ts
+bun run start
 ```
 
-This project was created using `bun init` in bun v1.3.5. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
- d
+Run local tests:
+
+```bash
+bun test
+```
+
+Run live network tests explicitly:
+
+```bash
+bun run test:live
+```

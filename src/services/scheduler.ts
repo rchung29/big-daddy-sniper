@@ -12,14 +12,14 @@ import { logger } from "../logger";
 
 // Default: start scanning 45 seconds before release
 const DEFAULT_SCAN_START_SECONDS_BEFORE = 45;
-// Default: start prefetch 15 minutes before release
-const DEFAULT_PREFETCH_START_SECONDS_BEFORE = 15 * 60;
 
 /**
  * Represents a scheduled release window
  */
 export interface ReleaseWindow {
+  id: string; // Stable key: timezone:releaseTime:targetDate
   releaseTime: string; // HH:mm format
+  releaseTimeZone: string;
   releaseDateTime: Date; // Exact datetime of release
   scanStartDateTime: Date; // When to start scanning
   targetDate: string; // The date we're trying to book (YYYY-MM-DD)
@@ -32,10 +32,15 @@ export interface ReleaseWindow {
  * If reservations open 30 days in advance, and release time is 10:00 AM,
  * then at 10:00 AM today, the date 30 days from now becomes available
  */
-export function calculateTargetDate(daysInAdvance: number, fromDate = new Date()): string {
-  const target = new Date(fromDate);
-  target.setDate(target.getDate() + daysInAdvance);
-  return target.toISOString().split("T")[0];
+export function calculateTargetDate(
+  daysInAdvance: number,
+  fromDate = new Date(),
+  timezone = "America/New_York"
+): string {
+  return DateTime.fromJSDate(fromDate)
+    .setZone(timezone)
+    .plus({ days: daysInAdvance })
+    .toFormat("yyyy-MM-dd");
 }
 
 /**
@@ -43,12 +48,13 @@ export function calculateTargetDate(daysInAdvance: number, fromDate = new Date()
  */
 export function parseReleaseTime(
   timeStr: string,
-  timezone = "America/New_York"
+  timezone = "America/New_York",
+  referenceDate = new Date()
 ): Date {
   const [hours, minutes] = timeStr.split(":").map(Number);
 
   // Get today's date in the target timezone, set the time, and convert to JS Date
-  const dt = DateTime.now()
+  const dt = DateTime.fromJSDate(referenceDate)
     .setZone(timezone)
     .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
 
@@ -61,16 +67,17 @@ export function parseReleaseTime(
  */
 export function getNextReleaseDateTime(
   releaseTime: string,
-  timezone = "America/New_York"
+  timezone = "America/New_York",
+  referenceDate = new Date()
 ): Date {
   const [hours, minutes] = releaseTime.split(":").map(Number);
+  const now = DateTime.fromJSDate(referenceDate).setZone(timezone);
 
-  let dt = DateTime.now()
-    .setZone(timezone)
+  let dt = now
     .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
 
   // If release time has passed today, schedule for tomorrow
-  if (dt <= DateTime.now()) {
+  if (dt <= now) {
     dt = dt.plus({ days: 1 });
   }
 
@@ -78,11 +85,22 @@ export function getNextReleaseDateTime(
 }
 
 /**
+ * Stable identifier for a release window.
+ */
+export function getReleaseWindowId(
+  releaseTime: string,
+  targetDate: string,
+  timezone = "America/New_York"
+): string {
+  return `${timezone}:${releaseTime}:${targetDate}`;
+}
+
+/**
  * Get the day of week (0=Sun, 6=Sat) for a date string (YYYY-MM-DD)
  */
 export function getDayOfWeek(dateStr: string): number {
-  const date = new Date(dateStr + "T12:00:00"); // Use noon to avoid timezone issues
-  return date.getDay();
+  const weekday = DateTime.fromISO(dateStr, { zone: "UTC" }).weekday;
+  return weekday === 7 ? 0 : weekday;
 }
 
 /**
@@ -132,83 +150,103 @@ export function isSubscriptionActiveForDate(
  * Filters out subscriptions where target_days doesn't match the target date
  */
 export function calculateReleaseWindows(
-  scanStartSecondsBefore = DEFAULT_SCAN_START_SECONDS_BEFORE
+  scanStartSecondsBefore = DEFAULT_SCAN_START_SECONDS_BEFORE,
+  referenceDate = new Date()
 ): ReleaseWindow[] {
-  const subscriptionsByReleaseTime = store.getSubscriptionsGroupedByReleaseTime();
-  const windows: ReleaseWindow[] = [];
+  const windowMap = new Map<
+    string,
+    {
+      releaseTime: string;
+      releaseTimeZone: string;
+      releaseDateTime: Date;
+      scanStartDateTime: Date;
+      targetDate: string;
+      subscriptions: FullSubscription[];
+    }
+  >();
 
-  for (const [releaseTime, allSubscriptions] of subscriptionsByReleaseTime) {
-    if (allSubscriptions.length === 0) continue;
-
-    const releaseDateTime = getNextReleaseDateTime(releaseTime);
-    const scanStartDateTime = new Date(
-      releaseDateTime.getTime() - scanStartSecondsBefore * 1000
+  for (const sub of store.getFullSubscriptions()) {
+    const releaseDateTime = getNextReleaseDateTime(
+      sub.release_time,
+      sub.release_time_zone,
+      referenceDate
     );
+    const targetDate = calculateTargetDate(
+      sub.days_in_advance,
+      releaseDateTime,
+      sub.release_time_zone
+    );
+    const isActive = isSubscriptionActiveForDate(sub.target_days, targetDate, sub.day_configs);
 
-    // Filter subscriptions by day_configs or target_days
-    // Each subscription may have a different days_in_advance, so calculate per-subscription
-    const activeSubscriptions = allSubscriptions.filter((sub) => {
-      const targetDate = calculateTargetDate(sub.days_in_advance);
-      const isActive = isSubscriptionActiveForDate(sub.target_days, targetDate, sub.day_configs);
+    if (!isActive) {
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const dayOfWeek = getDayOfWeek(targetDate);
+      const configuredDays = sub.day_configs
+        ? sub.day_configs.map((config) => dayNames[config.day]).join(", ")
+        : sub.target_days?.map((day) => dayNames[day]).join(", ");
 
-      if (!isActive) {
-        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        const dayOfWeek = getDayOfWeek(targetDate);
-        const configuredDays = sub.day_configs
-          ? sub.day_configs.map(c => dayNames[c.day]).join(", ")
-          : sub.target_days?.map(d => dayNames[d]).join(", ");
-        logger.debug(
-          {
-            user_id: sub.user_id,
-            restaurant: sub.restaurant_name,
-            targetDate,
-            dayOfWeek: dayNames[dayOfWeek],
-            configuredDays,
-          },
-          "Skipping subscription - target day not in user's preferred days"
-        );
-      }
-
-      return isActive;
-    });
-
-    // Skip this window entirely if no active subscriptions
-    if (activeSubscriptions.length === 0) {
       logger.debug(
-        { releaseTime },
-        "No active subscriptions for this release window after day filter"
+        {
+          user_id: sub.user_id,
+          restaurant: sub.restaurant_name,
+          targetDate,
+          dayOfWeek: dayNames[dayOfWeek],
+          configuredDays,
+        },
+        "Skipping subscription - target day not in user's preferred days"
       );
       continue;
     }
 
-    // Get unique restaurants for active subscriptions only
-    const restaurantMap = new Map<number, Restaurant>();
-    for (const sub of activeSubscriptions) {
-      if (!restaurantMap.has(sub.restaurant_id)) {
+    const windowId = getReleaseWindowId(sub.release_time, targetDate, sub.release_time_zone);
+    const existingWindow = windowMap.get(windowId);
+
+    if (existingWindow) {
+      existingWindow.subscriptions.push(sub);
+      continue;
+    }
+
+    windowMap.set(windowId, {
+      releaseTime: sub.release_time,
+      releaseTimeZone: sub.release_time_zone,
+      releaseDateTime,
+      scanStartDateTime: new Date(
+        releaseDateTime.getTime() - scanStartSecondsBefore * 1000
+      ),
+      targetDate,
+      subscriptions: [sub],
+    });
+  }
+
+  return Array.from(windowMap.entries())
+    .map(([id, groupedWindow]) => {
+      const restaurantMap = new Map<number, Restaurant>();
+      for (const sub of groupedWindow.subscriptions) {
+        if (restaurantMap.has(sub.restaurant_id)) continue;
         const restaurant = store.getRestaurantById(sub.restaurant_id);
         if (restaurant) {
           restaurantMap.set(sub.restaurant_id, restaurant);
         }
       }
-    }
 
-    // Use first active subscription's days_in_advance for the primary target date
-    const primaryTargetDate = calculateTargetDate(activeSubscriptions[0].days_in_advance);
-
-    windows.push({
-      releaseTime,
-      releaseDateTime,
-      scanStartDateTime,
-      targetDate: primaryTargetDate,
-      restaurants: Array.from(restaurantMap.values()),
-      subscriptions: activeSubscriptions,
+      return {
+        id,
+        releaseTime: groupedWindow.releaseTime,
+        releaseTimeZone: groupedWindow.releaseTimeZone,
+        releaseDateTime: groupedWindow.releaseDateTime,
+        scanStartDateTime: groupedWindow.scanStartDateTime,
+        targetDate: groupedWindow.targetDate,
+        restaurants: Array.from(restaurantMap.values()),
+        subscriptions: groupedWindow.subscriptions,
+      };
+    })
+    .sort((a, b) => {
+      const scanStartDiff = a.scanStartDateTime.getTime() - b.scanStartDateTime.getTime();
+      if (scanStartDiff !== 0) {
+        return scanStartDiff;
+      }
+      return a.targetDate.localeCompare(b.targetDate);
     });
-  }
-
-  // Sort by scan start time
-  windows.sort((a, b) => a.scanStartDateTime.getTime() - b.scanStartDateTime.getTime());
-
-  return windows;
 }
 
 /**
@@ -216,27 +254,20 @@ export function calculateReleaseWindows(
  */
 export class Scheduler {
   private timers = new Map<string, Timer>();
-  private prefetchTimers = new Map<string, Timer>();
   private scanStartSecondsBefore: number;
-  private prefetchStartSecondsBefore: number;
   private onWindowStart?: (window: ReleaseWindow) => void;
-  private onPrefetchStart?: (window: ReleaseWindow) => void;
+  private refreshTimer: Timer | null = null;
   private running = false;
 
   constructor(
     config: {
       scanStartSecondsBefore?: number;
-      prefetchStartSecondsBefore?: number;
       onWindowStart?: (window: ReleaseWindow) => void;
-      onPrefetchStart?: (window: ReleaseWindow) => void;
     } = {}
   ) {
     this.scanStartSecondsBefore =
       config.scanStartSecondsBefore ?? DEFAULT_SCAN_START_SECONDS_BEFORE;
-    this.prefetchStartSecondsBefore =
-      config.prefetchStartSecondsBefore ?? DEFAULT_PREFETCH_START_SECONDS_BEFORE;
     this.onWindowStart = config.onWindowStart;
-    this.onPrefetchStart = config.onPrefetchStart;
   }
 
   /**
@@ -252,7 +283,7 @@ export class Scheduler {
     logger.info("Starting scheduler");
 
     // Register callback with store for blackout window detection
-    store.setReleasTimeCallback(() => this.getNextReleaseTimes());
+    store.setReleaseTimesProvider(() => this.getNextReleaseTimes());
 
     // Register callback to recalculate windows when store syncs
     store.setOnSyncComplete(() => {
@@ -263,7 +294,7 @@ export class Scheduler {
     this.scheduleUpcomingWindows();
 
     // Re-calculate windows every hour to pick up new subscriptions from memory
-    setInterval(() => {
+    this.refreshTimer = setInterval(() => {
       if (this.running) {
         this.scheduleUpcomingWindows();
       }
@@ -279,9 +310,9 @@ export class Scheduler {
       clearTimeout(timer);
       this.timers.delete(key);
     }
-    for (const [key, timer] of this.prefetchTimers) {
-      clearTimeout(timer);
-      this.prefetchTimers.delete(key);
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
     }
     logger.info("Scheduler stopped");
   }
@@ -307,32 +338,8 @@ export class Scheduler {
     );
 
     for (const window of windows) {
-      const key = `${window.releaseTime}-${window.targetDate}`;
+      const key = window.id;
       const msUntilScan = window.scanStartDateTime.getTime() - now;
-      const msUntilPrefetch = window.releaseDateTime.getTime() - (this.prefetchStartSecondsBefore * 1000) - now;
-
-      // Schedule prefetch (15 min before release by default)
-      if (this.onPrefetchStart && msUntilPrefetch > 0 && msUntilPrefetch < 24 * 60 * 60 * 1000) {
-        const prefetchKey = `prefetch-${key}`;
-        if (!this.prefetchTimers.has(prefetchKey)) {
-          const prefetchTimer = setTimeout(() => {
-            this.handlePrefetchStart(window);
-            this.prefetchTimers.delete(prefetchKey);
-          }, msUntilPrefetch);
-
-          this.prefetchTimers.set(prefetchKey, prefetchTimer);
-
-          const minutesUntilPrefetch = Math.round(msUntilPrefetch / 60000);
-          logger.info(
-            {
-              releaseTime: window.releaseTime,
-              targetDate: window.targetDate,
-              prefetchStartsIn: `${minutesUntilPrefetch} minutes`,
-            },
-            "Scheduled prefetch"
-          );
-        }
-      }
 
       // Only schedule if scan start is in the future and within 24 hours
       if (msUntilScan > 0 && msUntilScan < 24 * 60 * 60 * 1000) {
@@ -349,6 +356,7 @@ export class Scheduler {
         const minutesUntil = Math.round(msUntilScan / 60000);
         logger.info(
           {
+            windowId: window.id,
             releaseTime: window.releaseTime,
             targetDate: window.targetDate,
             scanStartsIn: `${minutesUntil} minutes`,
@@ -358,24 +366,6 @@ export class Scheduler {
           "Scheduled release window"
         );
       }
-    }
-  }
-
-  /**
-   * Handle prefetch start (15 min before release by default)
-   */
-  private handlePrefetchStart(window: ReleaseWindow): void {
-    logger.info(
-      {
-        releaseTime: window.releaseTime,
-        targetDate: window.targetDate,
-        subscriptions: window.subscriptions.length,
-      },
-      "Starting prefetch for upcoming window"
-    );
-
-    if (this.onPrefetchStart) {
-      this.onPrefetchStart(window);
     }
   }
 
@@ -443,9 +433,7 @@ let scheduler: Scheduler | null = null;
 export function getScheduler(
   config?: {
     scanStartSecondsBefore?: number;
-    prefetchStartSecondsBefore?: number;
     onWindowStart?: (window: ReleaseWindow) => void;
-    onPrefetchStart?: (window: ReleaseWindow) => void;
   }
 ): Scheduler {
   if (!scheduler) {

@@ -113,6 +113,7 @@ export interface SubscriptionWithDetails extends UserSubscription {
   venue_id: string;
   days_in_advance: number;
   release_time: string;
+  release_time_zone: string;
 }
 
 /**
@@ -137,37 +138,4 @@ export interface SlotSnapshot {
   slot_count: number;
   slots: Array<{ time: string; type: string | null }>;
   created_at: Date;
-}
-
-/**
- * Passive monitoring target - separate from release-time subscriptions
- */
-export interface PassiveTarget {
-  id: number;
-  user_id: number;
-  restaurant_id: number;
-  party_size: number;
-  target_days: number[] | null; // Days of week: 0=Sun, 1=Mon, ..., 6=Sat (legacy, used as fallback)
-  time_window_start: string; // HH:mm format (legacy, used as fallback)
-  time_window_end: string;   // HH:mm format (legacy, used as fallback)
-  table_types: string[] | null;
-  day_configs: DayConfig[] | null; // Per-day time windows (takes precedence over target_days + time_window_*)
-  enabled: boolean;
-  created_at: Date;
-  updated_at: Date;
-}
-
-/**
- * Full passive target with user and restaurant details (for passive monitor)
- */
-export interface FullPassiveTarget extends PassiveTarget {
-  // Restaurant details
-  venue_id: string;
-  restaurant_name: string;
-  days_in_advance: number;
-  // User details
-  discord_id: string;
-  resy_auth_token: string;
-  resy_payment_method_id: number;
-  preferred_proxy_id: number | null;
 }

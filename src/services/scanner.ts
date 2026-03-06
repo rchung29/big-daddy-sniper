@@ -33,23 +33,12 @@ export interface DiscoveredSlot {
 }
 
 /**
- * Scan result containing all discovered slots (legacy, for backwards compatibility)
- */
-export interface ScanResult {
-  window: ReleaseWindow;
-  slots: DiscoveredSlot[];
-  elapsedMs: number;
-}
-
-/**
  * Scanner configuration
  */
 export interface ScannerConfig {
   scanIntervalMs?: number;
   scanTimeoutSeconds?: number;
   apiKey?: string;
-  /** @deprecated Use onSlotsDiscovered instead for push-based architecture */
-  onSlotsFound?: (result: ScanResult) => void;
   /** Called immediately when slots are found for a restaurant - non-blocking */
   onSlotsDiscovered?: (slots: DiscoveredSlot[], restaurant: Restaurant) => void;
   /** Called when scan window completes (2min timeout or all restaurants found slots) */
@@ -74,7 +63,6 @@ export class Scanner {
   private scanIntervalMs: number;
   private scanTimeoutSeconds: number;
   private apiKey: string;
-  private onSlotsFound?: (result: ScanResult) => void;
   private onSlotsDiscovered?: (slots: DiscoveredSlot[], restaurant: Restaurant) => void;
   private onScanComplete?: (window: ReleaseWindow, stats: ScanStats) => void;
   private activeScans = new Map<string, boolean>(); // window key -> running
@@ -88,7 +76,6 @@ export class Scanner {
     this.scanIntervalMs = config.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     this.scanTimeoutSeconds = config.scanTimeoutSeconds ?? DEFAULT_SCAN_TIMEOUT_SECONDS;
     this.apiKey = config.apiKey ?? process.env.RESY_API_KEY ?? "";
-    this.onSlotsFound = config.onSlotsFound;
     this.onSlotsDiscovered = config.onSlotsDiscovered;
     this.onScanComplete = config.onScanComplete;
   }
@@ -97,12 +84,12 @@ export class Scanner {
    * Start scanning for a release window
    * Push-based: emits slots immediately as found, continues scanning other restaurants
    */
-  async startScan(window: ReleaseWindow): Promise<ScanResult | null> {
-    const windowKey = `${window.releaseTime}-${window.targetDate}`;
+  async startScan(window: ReleaseWindow): Promise<void> {
+    const windowKey = window.id;
 
     if (this.activeScans.get(windowKey)) {
       logger.warn({ windowKey }, "Scan already active for this window");
-      return null;
+      return;
     }
 
     // Reset per-scan state
@@ -126,7 +113,6 @@ export class Scanner {
     );
 
     let scanCount = 0;
-    const allDiscoveredSlots: DiscoveredSlot[] = [];
 
     try {
       while (this.activeScans.get(windowKey)) {
@@ -162,14 +148,9 @@ export class Scanner {
         const scanStartTime = Date.now();
 
         // Scan pending restaurants in parallel
-        const results = await Promise.all(
+        await Promise.all(
           pendingRestaurants.map((r) => this.scanRestaurantAndEmit(r, window))
         );
-
-        // Collect slots for backwards compatibility
-        for (const slots of results) {
-          allDiscoveredSlots.push(...slots);
-        }
 
         // Calculate time to next scan with jitter (±500ms) to avoid predictable patterns
         const scanDuration = Date.now() - scanStartTime;
@@ -198,8 +179,6 @@ export class Scanner {
       this.activeScans.delete(windowKey);
     }
 
-    const elapsedMs = Date.now() - startTime;
-
     // Call scan complete callback
     if (this.onScanComplete) {
       const stats: ScanStats = {
@@ -207,25 +186,10 @@ export class Scanner {
         totalSlotsFound: this.totalSlotsFound,
         restaurantsWithSlots: this.completedRestaurants.size,
         restaurantsWithoutSlots: window.restaurants.length - this.completedRestaurants.size,
-        elapsedMs,
+        elapsedMs: Date.now() - startTime,
       };
       this.onScanComplete(window, stats);
     }
-
-    // Backwards compatibility: if using legacy onSlotsFound callback
-    if (this.onSlotsFound && allDiscoveredSlots.length > 0) {
-      const scanResult: ScanResult = {
-        window,
-        slots: allDiscoveredSlots,
-        elapsedMs,
-      };
-      this.onSlotsFound(scanResult);
-      return scanResult;
-    }
-
-    return allDiscoveredSlots.length > 0
-      ? { window, slots: allDiscoveredSlots, elapsedMs }
-      : null;
   }
 
   /**
@@ -316,8 +280,7 @@ export class Scanner {
       proxyUrl: proxy?.url,
     });
 
-    // Calculate target date based on this restaurant's days_in_advance
-    const targetDate = this.calculateTargetDate(restaurant.days_in_advance);
+    const targetDate = window.targetDate;
 
     // Get subscriptions for this restaurant to know party sizes to check
     const subscriptions = window.subscriptions.filter(
@@ -409,26 +372,6 @@ export class Scanner {
 
     return discovered;
   }
-
-  /**
-   * Calculate target date from days in advance
-   */
-  private calculateTargetDate(daysInAdvance: number): string {
-    const target = new Date();
-    target.setDate(target.getDate() + daysInAdvance);
-    return target.toISOString().split("T")[0];
-  }
-
-  /**
-   * Stop an active scan
-   */
-  stopScan(windowKey: string): void {
-    if (this.activeScans.has(windowKey)) {
-      this.activeScans.set(windowKey, false);
-      logger.info({ windowKey }, "Stopping scan");
-    }
-  }
-
   /**
    * Stop all active scans
    */
@@ -437,27 +380,6 @@ export class Scanner {
       this.activeScans.set(key, false);
     }
     logger.info("Stopping all scans");
-  }
-
-  /**
-   * Check if a scan is active
-   */
-  isScanActive(windowKey: string): boolean {
-    return this.activeScans.get(windowKey) ?? false;
-  }
-
-  /**
-   * Get active scan count
-   */
-  getActiveScanCount(): number {
-    return Array.from(this.activeScans.values()).filter(Boolean).length;
-  }
-
-  /**
-   * Get per-restaurant completion status for active scan
-   */
-  getCompletedRestaurants(): Set<number> {
-    return new Set(this.completedRestaurants);
   }
 }
 

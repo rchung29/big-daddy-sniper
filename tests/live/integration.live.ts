@@ -1,5 +1,5 @@
 /**
- * Comprehensive Integration Tests
+ * Comprehensive Live Integration Tests
  *
  * Tests the full booking flow against the real Resy API:
  * 1. IP Check
@@ -12,7 +12,7 @@
  * Also tests scheduler and executor logic with real data.
  *
  * USAGE:
- *   VENUE_ID=1234 bun test tests/integration.test.ts
+ *   VENUE_ID=1234 bun test tests/live/integration.live.ts
  *
  * REQUIRED ENV VARS:
  *   - RESY_AUTH_TOKEN: Your Resy auth token

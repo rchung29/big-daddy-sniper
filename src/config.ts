@@ -7,15 +7,10 @@ export const AppConfigSchema = z.object({
   // Core Resy API
   RESY_API_KEY: z.string().min(1),
 
-  // Discord Bot
-  DISCORD_BOT_TOKEN: z.string().min(1).describe("Discord bot token"),
-  DISCORD_CLIENT_ID: z.string().min(1).describe("Discord application client ID"),
-  DISCORD_ADMIN_ID: z
-    .string()
-    .optional()
-    .describe("Discord user ID for admin notifications"),
+  // Discord webhook notifications
   DISCORD_WEBHOOK_URL: z
     .string()
+    .url()
     .optional()
     .describe("Discord webhook URL for booking notifications"),
 
@@ -57,29 +52,6 @@ export const AppConfigSchema = z.object({
     .transform((val) => val?.toLowerCase() === "true")
     .describe("Enable proxy rotation (adds ~600ms latency)"),
 
-  // Dashboard settings
-  DASHBOARD_ENABLED: z
-    .string()
-    .optional()
-    .transform((val) => val?.toLowerCase() !== "false")
-    .describe("Enable CLI dashboard (default: true if TTY)"),
-
-  // Passive Monitor settings
-  PASSIVE_MONITOR_ENABLED: z
-    .string()
-    .optional()
-    .transform((val) => val?.toLowerCase() === "true")
-    .describe("Enable passive calendar monitoring for availability"),
-  PASSIVE_POLL_INTERVAL_MS: z.coerce
-    .number()
-    .int()
-    .default(60000)
-    .describe("Milliseconds between passive calendar polls"),
-  PASSIVE_BLACKOUT_MINUTES: z.coerce
-    .number()
-    .int()
-    .default(5)
-    .describe("Minutes around release times to pause passive monitoring"),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -92,12 +64,6 @@ export const config = AppConfigSchema.parse(process.env);
  */
 export function validateConfig(): void {
   // Zod already validates required fields, but we can add extra checks here
-  if (!config.DISCORD_BOT_TOKEN) {
-    throw new Error("DISCORD_BOT_TOKEN is required");
-  }
-  if (!config.DISCORD_CLIENT_ID) {
-    throw new Error("DISCORD_CLIENT_ID is required");
-  }
   if (!config.SUPABASE_URL) {
     throw new Error("SUPABASE_URL is required");
   }
